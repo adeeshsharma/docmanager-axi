@@ -1,0 +1,1262 @@
+:root {
+  color-scheme: light dark;
+
+  --accent: #6d5ef0;
+  --accent-strong: #5b4dd6;
+  --accent-tint: rgba(109, 94, 240, 0.12);
+  --accent-text: #ffffff;
+
+  --diff-add: #1a7f37;
+  --diff-add-bg: rgba(26, 127, 55, 0.08);
+  --diff-remove: #c0392b;
+  --diff-remove-bg: rgba(192, 57, 43, 0.08);
+
+  --bg: #faf9f6;
+  --bg-elevated: #ffffff;
+  --border: #e7e3db;
+  --border-soft: #efece5;
+  --text: #211f1c;
+  --text-muted: #756e63;
+  --text-faint: #a39c8f;
+  --shadow: 0 1px 2px rgba(30, 25, 15, 0.04), 0 6px 20px rgba(30, 25, 15, 0.05);
+
+  --sidebar-bg: #1c1a1f;
+  --sidebar-text: #eeecf2;
+  --sidebar-muted: #948fa3;
+  --sidebar-border: #2c2933;
+  --sidebar-hover: #262330;
+  --sidebar-input-bg: #100f13;
+  --sidebar-warn: #e0a94b;
+  --sidebar-warn-tint: rgba(224, 169, 75, 0.16);
+
+  --radius-sm: 7px;
+  --radius-lg: 16px;
+
+  /* One spacing scale, used everywhere - nothing gets an arbitrary
+     in-between value outside of this set. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+}
+
+:root[data-theme="light"] {
+  /* Colors are already correct via the base :root values below - the
+     media-query override only applies when data-theme is absent or "dark"
+     (see the :not([data-theme="light"]) guard further down). Only the
+     native color-scheme hint needs to be pinned here, so browser-drawn
+     scrollbars/form controls follow the explicit choice too, not just the
+     OS's own preference. */
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16151a;
+  --bg-elevated: #1e1d24;
+  --border: #2c2a34;
+  --border-soft: #26242c;
+  --text: #ece9f2;
+  --text-muted: #a29cb3;
+  --text-faint: #6d6880;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --accent-tint: rgba(139, 125, 255, 0.16);
+  --diff-add: #4ade80;
+  --diff-add-bg: rgba(74, 222, 128, 0.12);
+  --diff-remove: #f87171;
+  --diff-remove-bg: rgba(248, 113, 113, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16151a;
+    --bg-elevated: #1e1d24;
+    --border: #2c2a34;
+    --border-soft: #26242c;
+    --text: #ece9f2;
+    --text-muted: #a29cb3;
+    --text-faint: #6d6880;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
+    --accent-tint: rgba(139, 125, 255, 0.16);
+    --diff-add: #4ade80;
+    --diff-add-bg: rgba(74, 222, 128, 0.12);
+    --diff-remove: #f87171;
+    --diff-remove-bg: rgba(248, 113, 113, 0.12);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Load-bearing, not decorative: [hidden] and a class selector that also
+   sets display (.view, below) have equal specificity, and an author
+   stylesheet rule always beats the browser's default [hidden]{display:none}
+   regardless of specificity matching - without this, any element that is
+   both .view and hidden stays visible, silently. This makes every future
+   hidden element safe by construction instead of by remembering to avoid
+   the collision each time. */
+[hidden] {
+  display: none !important;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+  font-size: 14.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  height: 100vh;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: auto;
+    min-height: 100vh;
+  }
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4) var(--space-3);
+  font-weight: 650;
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.brand svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--sidebar-muted);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-item:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
+}
+
+.nav-item.nav-active {
+  background: var(--accent-tint);
+  color: #d6d0ff;
+}
+
+.nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.sidebar-section {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-3);
+}
+
+.sidebar-section-label {
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--sidebar-muted);
+  padding: var(--space-2) var(--space-3) var(--space-1);
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-input-bg);
+  color: var(--sidebar-text);
+  font-size: 0.8rem;
+}
+
+.search-box input::placeholder {
+  color: var(--sidebar-muted);
+}
+
+.search-box button {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--sidebar-muted);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.search-box button:hover {
+  color: var(--sidebar-text);
+}
+
+.family-list .search-snippet {
+  color: var(--sidebar-muted);
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.family-list mark {
+  background: var(--sidebar-warn-tint);
+  color: var(--sidebar-warn);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.family-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.family-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  min-width: 0;
+}
+
+.family-list li:hover {
+  background: var(--sidebar-hover);
+}
+
+.family-list li.selected {
+  background: var(--accent-tint);
+  border-left-color: var(--accent);
+}
+
+.family-list li svg {
+  flex-shrink: 0;
+  color: var(--sidebar-muted);
+}
+
+.family-list li.selected svg {
+  color: #c9c2ff;
+}
+
+.family-list .item-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.family-list .path {
+  font-size: 0.83rem;
+  color: var(--sidebar-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.family-list .meta {
+  color: var(--sidebar-muted);
+  font-size: 0.72rem;
+  margin-top: 0.1rem;
+}
+
+.bulk-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-hover);
+  font-size: 0.78rem;
+  color: var(--sidebar-text);
+}
+
+.bulk-actions-bar button {
+  background: none;
+  border: none;
+  color: var(--sidebar-muted);
+  font-weight: 600;
+  font-size: 0.76rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bulk-actions-bar button:hover {
+  color: var(--sidebar-text);
+}
+
+.bulk-actions-bar .bulk-danger {
+  color: #e0685c;
+}
+
+.bulk-actions-bar .bulk-danger:hover {
+  color: #ff8177;
+}
+
+.family-list li .family-select {
+  flex-shrink: 0;
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.dup-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0.05rem var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-warn-tint);
+  color: var(--sidebar-warn);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: help;
+}
+
+.family-list .empty,
+.empty-state .muted {
+  color: var(--sidebar-muted);
+  font-size: 0.82rem;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ---------- Track panel ---------- */
+
+.track-panel {
+  border-top: 1px solid var(--sidebar-border);
+  padding: var(--space-4);
+  flex-shrink: 0;
+}
+
+.track-panel summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--sidebar-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.track-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.track-panel summary:hover,
+.track-panel[open] summary {
+  color: var(--sidebar-text);
+}
+
+#track-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+#track-form label {
+  font-size: 0.76rem;
+  color: var(--sidebar-muted);
+}
+
+#track-form textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-input-bg);
+  color: var(--sidebar-text);
+  resize: vertical;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.78rem;
+  color: var(--sidebar-muted);
+}
+
+.checkbox-label input { width: auto; }
+
+#track-form button,
+#settings-form button {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.05s ease;
+}
+
+#track-form button:hover,
+#settings-form button:hover {
+  background: var(--accent-strong);
+}
+
+#track-form button:active,
+#settings-form button:active {
+  transform: translateY(1px);
+}
+
+.status-message {
+  font-size: 0.78rem;
+  color: var(--sidebar-muted);
+}
+
+/* ---------- Main content ---------- */
+
+.content {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.empty-state {
+  margin: auto;
+  text-align: center;
+  color: var(--text-faint);
+  max-width: 30ch;
+}
+
+.empty-state svg {
+  color: var(--text-faint);
+  margin-bottom: var(--space-3);
+}
+
+.empty-state p {
+  margin: var(--space-1) 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* The detail view is edge-to-edge on purpose: the reading pane should take
+   effectively all available space, the way opening the file in a real
+   browser tab would, not compete with a sidebar rail for width. */
+.detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  overflow: hidden;
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-shrink: 0;
+  margin-bottom: var(--space-3);
+}
+
+.detail-heading h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.3rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.detail-meta {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem var(--space-2);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.tag-chip-small {
+  margin-left: var(--space-2);
+  padding: 0.02rem 0.4rem;
+  font-size: 0.64rem;
+}
+
+.tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.tag-remove:hover {
+  color: #c0392b;
+}
+
+.tag-add {
+  cursor: pointer;
+  border-style: dashed;
+  color: var(--text-faint);
+}
+
+.tag-add:hover {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+
+.open-in-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  margin-top: 0.15rem;
+}
+
+.open-in-tab:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.untrack-action {
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.untrack-action:hover {
+  color: #c0392b;
+  border-color: #c0392b;
+}
+
+/* ---------- Version strip ---------- */
+/* A horizontal row, not a vertical rail - version control stays visible
+   in one place without taking real space away from actually reading. */
+
+.version-strip {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0 0 var(--space-1);
+  flex-shrink: 0;
+}
+
+.version-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.version-chip:hover {
+  border-color: var(--text-faint);
+  color: var(--text);
+}
+
+.version-chip .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.version-chip.current .dot {
+  background: var(--accent);
+}
+
+.version-chip.viewing {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.version-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 0.1rem;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.version-delete:hover {
+  background: var(--diff-remove-bg);
+  color: var(--diff-remove);
+}
+
+/* ---------- Compare versions (a dedicated modal, not inline - the family
+   view is crowded enough with the timeline and reading pane already) ---------- */
+
+.compare-trigger {
+  align-self: flex-start;
+  margin-bottom: var(--space-3);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 18, 24, 0.55);
+  padding: var(--space-3);
+}
+
+.modal-dialog {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* Comparing two full rendered pages benefits from real width, unlike a
+   prose-reading column - sized against the actual viewport rather than a
+   fixed pixel cap that reads as small on any screen bigger than a laptop. */
+.compare-modal-dialog {
+  width: 96vw;
+  height: 94vh;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: var(--border-soft);
+  color: var(--text);
+}
+
+.compare-modal-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 var(--space-5) var(--space-5);
+  display: flex;
+  flex-direction: column;
+}
+
+.compare-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+}
+
+.compare-form label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.compare-form select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.82rem;
+  max-width: 220px;
+}
+
+.compare-form button {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.compare-mode-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* .compare-form button (a plain descendant selector) already sets the
+   primary accent-filled look for "Show diff" - these need a class on top
+   of it to out-specify that rule properly rather than reach for
+   !important, matching this project's own established discipline. */
+.compare-form button.mode-tab {
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.78rem;
+}
+
+.compare-form button.mode-tab.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.compare-rendered {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--space-3);
+}
+
+.compare-rendered-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.compare-rendered-label {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.compare-rendered .reading-frame {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .compare-modal-dialog {
+    height: 100%;
+  }
+  .compare-rendered {
+    flex-direction: column;
+  }
+}
+
+.diff-output {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  overflow: auto;
+}
+
+.diff-added {
+  display: block;
+  color: var(--diff-add);
+  background: var(--diff-add-bg);
+}
+
+.diff-removed {
+  display: block;
+  color: var(--diff-remove);
+  background: var(--diff-remove-bg);
+}
+
+.diff-context {
+  display: block;
+  color: var(--text-muted);
+}
+
+/* ---------- Reading pane ---------- */
+
+.reading-pane {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.reading-frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #fff;
+}
+
+.version-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent-tint);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 0.82rem;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.version-banner button {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ---------- Settings ---------- */
+
+/* The scrollable container is the layout wrapper, not the individual
+   panels: a panel sized with height:fit-content never actually overflows
+   itself (fit-content grows to whatever the content needs), so an
+   overflow-y:auto on the panel is inert - it was .content's own
+   overflow:hidden further up the chain silently clipping anything taller
+   than the viewport instead. Scrolling has to happen at the level that is
+   actually height-constrained. */
+.settings-layout {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .settings-layout {
+    flex-direction: column;
+  }
+}
+
+.panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--space-5);
+}
+
+.settings-primary {
+  flex: 0 0 400px;
+  min-width: 0;
+}
+
+.settings-reference {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .settings-primary,
+  .settings-reference {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
+.panel h2 {
+  margin: 0 0 var(--space-4);
+  font-size: 1.05rem;
+}
+
+.info-block {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+}
+
+.panel > .info-block:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.info-block h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.info-block p {
+  margin: 0 0 var(--space-2);
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+
+.info-block p.muted {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
+.info-block ul {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.1rem;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+
+.info-block li {
+  margin: var(--space-1) 0;
+}
+
+.info-block li code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+}
+
+.info-block .grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 560px) {
+  .info-block .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.theme-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: var(--space-2);
+}
+
+.theme-toggle .theme-tab {
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.theme-toggle .theme-tab:hover {
+  color: var(--text);
+}
+
+.theme-toggle .theme-tab.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.info-block p.info-label {
+  font-size: 0.78rem;
+  font-weight: 650;
+  margin: 0 0 var(--space-1);
+}
+
+.info-label.included {
+  color: var(--accent-strong);
+}
+
+.info-label.excluded {
+  color: var(--text-faint);
+}
+
+.danger-zone .danger-button {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  margin-top: var(--space-1);
+}
+
+.danger-zone .danger-button:hover {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+#settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+#settings-form label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+#settings-form input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+#settings-form .status-message {
+  color: var(--text-muted);
+}
+
+.label-hint {
+  font-weight: 400;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+#settings-form input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.token-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: -0.2rem;
+}
+
+/* #settings-form button (id + type selector) already sets the primary
+   button look - these overrides need to out-specify it properly rather
+   than reach for !important, which this project deliberately reserves for
+   exactly one documented case (the global [hidden] fix). */
+#settings-form button.link-button {
+  align-self: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-weight: 500;
+  font-size: 0.76rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+#settings-form button.link-button:hover {
+  color: var(--text);
+  background: none;
+}
+
+.secondary-button {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+/* ---------- Reconnect banner ---------- */
+
+.reconnect-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: #b7791f;
+  color: white;
+  text-align: center;
+  padding: var(--space-2);
+  font-size: 0.85rem;
+}

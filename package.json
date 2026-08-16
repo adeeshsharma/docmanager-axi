@@ -1,0 +1,33 @@
+{
+  "name": "docmanager-axi",
+  "version": "0.0.0",
+  "description": "Manage and version HTML documents on your local machine",
+  "type": "module",
+  "bin": {
+    "docmanager": "./bin/docmanager.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "src",
+    "dist",
+    "skills"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js && node scripts/build-skill.js",
+    "build:skill": "node scripts/build-skill.js",
+    "build:skill:check": "node scripts/build-skill.js --check",
+    "test": "node --test test/*.test.js",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "axi-sdk-js": "^0.1.10",
+    "better-sqlite3": "^13.0.3",
+    "diff": "^9.0.0",
+    "open": "^11.0.1",
+    "parse5": "^8.0.1"
+  }
+}

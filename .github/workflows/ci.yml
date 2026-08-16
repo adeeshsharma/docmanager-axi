@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The real, previously-acknowledged-but-unverified risk this project has
+  # carried since phase 1: better-sqlite3 prebuilds and detached-process
+  # spawn/kill semantics were only ever code-reviewed for Windows/Ubuntu, not
+  # actually run there. This matrix is what closes that gap.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Must run BEFORE `npm run build` below, which regenerates
+      # skills/docmanager/SKILL.md from src/skill.js unconditionally -
+      # checking after that step would always pass trivially. This checks
+      # the file actually committed to the repo, catching a future change
+      # that edits src/skill.js (or the committed file directly) without
+      # keeping the other in sync.
+      - run: npm run build:skill:check
+      - run: npm run build
+      - run: npm test
+      - run: npm pack --dry-run
+
+  # engines pins ">=20" but every real run above (and all manual testing
+  # throughout this project's history) has only ever used Node 22 - this
+  # confirms the stated floor actually works, on Linux where the matrix job
+  # above already gives the fastest signal.
+  node-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
