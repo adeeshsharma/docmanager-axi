@@ -1,6 +1,6 @@
 {
   "name": "docmanager-axi",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Manage and version HTML documents on your local machine",
   "type": "module",
   "bin": {
@@ -18,7 +18,15 @@
     "name": "Adeesh Sharma",
     "url": "https://github.com/adeeshsharma"
   },
-  "keywords": ["axi", "agent", "cli", "git", "versioning", "html", "documents"],
+  "keywords": [
+    "axi",
+    "agent",
+    "cli",
+    "git",
+    "versioning",
+    "html",
+    "documents"
+  ],
   "engines": {
     "node": ">=22"
   },
