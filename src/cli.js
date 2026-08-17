@@ -114,6 +114,7 @@ const ERROR_SUGGESTIONS = {
   CONTENT_NOT_FOUND: ["Run `docmanager families view <id>` to see valid version hashes"],
   LAVISH_NOT_FOUND: ["Run `npm install` in the docmanager-axi installation to install lavish-axi"],
   CANNOT_DELETE_LAST_VERSION: ["Run `docmanager untrack <id>` to stop tracking the whole document instead"],
+  VERSION_STILL_LIVE: ["Edit the live file so its content differs, or `docmanager untrack <id>`, then try deleting again"],
   SAME_FAMILY: ["fromId and toId must be two different families"],
   NO_ROOT_VERSION: ["Run `docmanager families view <id>` to inspect the family first"],
   NO_REMOTE_CONFIGURED: ["Run `docmanager settings set --snapshot-remote <url>` first"],
