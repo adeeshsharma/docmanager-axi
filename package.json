@@ -6,6 +6,19 @@
   "bin": {
     "docmanager": "./bin/docmanager.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adeeshsharma/docmanager-axi.git"
+  },
+  "homepage": "https://github.com/adeeshsharma/docmanager-axi#readme",
+  "bugs": {
+    "url": "https://github.com/adeeshsharma/docmanager-axi/issues"
+  },
+  "author": {
+    "name": "Adeesh Sharma",
+    "url": "https://github.com/adeeshsharma"
+  },
+  "keywords": ["axi", "agent", "cli", "git", "versioning", "html", "documents"],
   "engines": {
     "node": ">=22"
   },
