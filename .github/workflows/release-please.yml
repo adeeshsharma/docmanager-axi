@@ -53,12 +53,12 @@ jobs:
       - run: npm install -g npm@latest
         if: ${{ steps.release.outputs.release_created }}
 
-      # No --provenance: this repo is currently private, and npm publish
-      # --provenance errors outright from a private source repo ("Can't
-      # generate provenance for new or private package"), it doesn't just
-      # silently skip it. If the repo is ever made public, trusted
-      # publishing generates provenance automatically on its own - the
-      # explicit flag becomes unnecessary at that point too, not just safe
-      # to add back.
+      # No --provenance flag needed: this repo is public, and with Trusted
+      # Publishing configured npm generates provenance attestations
+      # automatically as part of the OIDC publish flow. (While the repo was
+      # private, --provenance would have errored outright rather than
+      # silently skipping - "Can't generate provenance for new or private
+      # package" - which is why an earlier version of this comment framed
+      # it as a limitation to work around.)
       - run: npm publish --access public
         if: ${{ steps.release.outputs.release_created }}

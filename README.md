@@ -174,7 +174,7 @@ node bin/docmanager.js --help
 
 No bundler, no framework for the CLI, core, or UI - all plain Node/HTML/CSS/JS, to keep the published package small. `npm test` uses `DOCMANAGER_HOME`/`DOCMANAGER_PORT` overrides internally to fully isolate itself from any real, already-running core on the same machine - safe to run alongside normal use. CI runs the same suite, `npm run build:skill:check` (fails if the committed Agent Skill has drifted from its source), `npm run build`, and `npm pack --dry-run` on macOS, Windows, and Ubuntu.
 
-See [CHANGELOG.md](./CHANGELOG.md) for what's changed, and [RELEASING.md](./RELEASING.md) for the release checklist.
+See [CHANGELOG.md](./CHANGELOG.md) for what's changed, [RELEASING.md](./RELEASING.md) for the release checklist, and [CONTRIBUTING.md](./CONTRIBUTING.md) for this project's current contribution policy.
 
 ## License
 

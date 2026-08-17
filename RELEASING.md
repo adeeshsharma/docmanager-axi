@@ -17,7 +17,7 @@ npm's Trusted Publishing has a real chicken-and-egg constraint: **a package must
 2. **Configure the Trusted Publisher.** On the package's npmjs.com settings page, add a Trusted Publisher: GitHub Actions, this repo's owner/name, workflow filename `release-please.yml` (exact match, case-sensitive - not the full path), no environment needed. Select at least one allowed action (`npm publish`).
 3. From here on, every subsequent release goes through the automated flow above - the manual bootstrap publish is a one-time thing, never repeated.
 
-**Honest limitation, stated plainly rather than glossed over**: this repository is currently private, and npm's provenance attestations (a supply-chain verification badge) aren't generated for packages published from a private source repo - `npm publish --provenance` errors outright there rather than silently skipping it, so the workflow doesn't pass that flag. If this repo is ever made public, provenance is generated automatically once trusted publishing is configured - nothing in this workflow needs to change to pick that up.
+**Provenance**: this repository is now public. With Trusted Publishing configured, npm generates provenance attestations (a supply-chain verification badge, visible on the npm package page) automatically as part of the OIDC publish flow - no `--provenance` flag needed in the workflow, and none is passed. (While the repo was private, provenance wasn't possible at all - `npm publish --provenance` errors outright from a private source repo rather than silently skipping it - which is why this note used to be framed as a limitation. Kept here for the record now that it no longer applies.)
 
 ## What changed from the old manual checklist
 
