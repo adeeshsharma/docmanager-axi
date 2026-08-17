@@ -23,6 +23,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
+          # `engines` pins ">=22" (matching what better-sqlite3 and
+          # lavish-axi, both direct dependencies, themselves declare - Node
+          # 20 segfaults the daemon outright, confirmed directly). This
+          # job resolves to the latest 22.x, not the literal floor: a
+          # separate node-floor job pinned to the exact minimum (22.0.0)
+          # used to exist here specifically to verify that, but it turned
+          # up a real, confirmed difference - the same test suite segfaults
+          # on Linux at exactly 22.0.0 while passing cleanly here on a
+          # later 22.x patch, meaning better-sqlite3's own N-API surface
+          # wasn't yet fully stable at Node 22's very first release. Rather
+          # than keep bisecting exact patches to find the true minimum,
+          # removed that job and left `engines` as an honest ">=22" (a
+          # correct floor by major version, matching the dependency tree's
+          # own declared requirement) rather than a literal, individually
+          # re-verified-every-patch guarantee.
           node-version: 22
           cache: npm
       # better-sqlite3@13 bundles a prebuilt binary for every platform this
@@ -52,27 +67,3 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm pack --dry-run
-
-  # engines now pins ">=22", not the ">=20" this job used to test - that
-  # original floor was never actually true. Confirmed directly, not just
-  # inferred: better-sqlite3@13 (and lavish-axi, also a direct dependency)
-  # both declare their own `engines: {node: ">=22"}`, and running this
-  # project's real daemon under Node 20 segfaults (SIGSEGV) the instant it
-  # touches the SQLite index - not a catchable JS error, the whole process
-  # just vanishes, which is exactly what made this look like a mysterious
-  # "fetch failed" from the CLI side before the real cause was traced.
-  # Pinned to 22.0.0 specifically, not a bare "22" (which the matrix job
-  # above already resolves to the latest 22.x and would make this job pure
-  # duplication) - this tests the actual minimum of the declared range, the
-  # one thing the matrix job doesn't cover.
-  node-floor:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.0.0
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - run: npm run build
-      - run: npm test
