@@ -56,18 +56,7 @@ Works for Claude Code, Codex, or OpenCode (whichever is present). The skill and 
 
 ## Install the CLI
 
-### From source (current - not yet published to npm)
-
-```sh
-git clone git@github.com:adeeshsharma/docmanager-axi.git
-cd docmanager-axi
-npm install
-npm link          # puts `docmanager` on PATH, backed by this checkout
-```
-
-`npm link` gives the same `docmanager <command>` experience the eventual `npm install -g docmanager-axi` will, just pointed at your local checkout instead of the registry. Prefer not to touch global npm links? Run everything as `node bin/docmanager.js <command>` from inside the checkout instead - identical behavior.
-
-### Once published to npm (not yet available)
+### From npm
 
 ```sh
 npm install -g docmanager-axi
@@ -77,6 +66,17 @@ npm install -g docmanager-axi
 # or, without a global install:
 npx docmanager-axi <command>
 ```
+
+### From source (for development on docmanager-axi itself)
+
+```sh
+git clone git@github.com:adeeshsharma/docmanager-axi.git
+cd docmanager-axi
+npm install
+npm link          # puts `docmanager` on PATH, backed by this checkout
+```
+
+`npm link` gives the same `docmanager <command>` experience the npm-installed version does, just pointed at your local checkout instead of the registry. Prefer not to touch global npm links? Run everything as `node bin/docmanager.js <command>` from inside the checkout instead - identical behavior.
 
 ## Prerequisites
 
