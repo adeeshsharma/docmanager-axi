@@ -1,14 +1,24 @@
 # Releasing
 
-This project has no release automation (no release-please, no version-bump bot) - deliberately. It's a lightweight, manual checklist, not automation machinery, until real release cadence proves that's actually needed.
+Releases are automated with [release-please](https://github.com/googleapis/release-please): every push to `main` runs `.github/workflows/release-please.yml`, which keeps an up-to-date "Release PR" open, proposing the next version bump and `CHANGELOG.md` entry based on [Conventional Commits](https://www.conventionalcommits.org/) merged since the last release. Merging that PR creates the GitHub release and tag, which triggers the same workflow to build, test, and `npm publish` automatically via npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC) - no long-lived npm token stored anywhere.
 
-1. Confirm `main` is green: all four required CI checks passing (`test (ubuntu-latest)`, `test (windows-latest)`, `test (macos-latest)`, `node-floor`).
-2. Run the full local safety net one more time: `npm run build:skill:check && npm run build && npm test` (the same `prepublishOnly` script `npm publish` will run anyway - this just fails fast, before anything else below).
-3. Move the `## [Unreleased]` section in `CHANGELOG.md` under a new `## [x.y.z] - YYYY-MM-DD` heading, leaving a fresh empty `## [Unreleased]` above it. Follow semver: a breaking CLI/API change is major, a new command or capability is minor, a fix-only release is patch.
-4. Bump `"version"` in `package.json` to match.
-5. Commit both files together: `chore: release vx.y.z`.
-6. Tag the commit: `git tag vx.y.z`, then `git push origin main --tags`.
-7. `npm publish` - only ever done with the user's own explicit, in-the-moment request; never assume a prior approval carries forward to the next release.
-8. Create a GitHub release from the tag, with the CHANGELOG section for this version as the release notes.
+## Ongoing releases (once bootstrapped - see below)
 
-First release only: confirm the `docmanager-axi` package name is actually available on the npm registry before step 7 (`npm view docmanager-axi` should 404) - it's been a placeholder name since `ARCHITECTURE.md` section 9 and has never actually been checked against the real registry.
+1. Merge PRs to `main` using [Conventional Commits](https://www.conventionalcommits.org/) messages (`feat:`, `fix:`, `feat!:`/`BREAKING CHANGE:` for breaking changes, `chore:`/`docs:`/`test:` for anything that shouldn't bump the version). release-please reads these to decide the next version and what goes in the changelog - an unconventional commit message is silently invisible to it, not an error.
+2. release-please keeps one Release PR open on `main`, auto-updating it after every push - review it any time to see exactly what the next release would contain.
+3. When ready to release: merge that PR. This alone updates `package.json`, `src/version.js`, and `CHANGELOG.md`, tags the commit, and creates a GitHub release - `.github/workflows/release-please.yml` then runs the same checks CI already runs on every PR (`build:skill:check`, `build`, `test`) and publishes to npm automatically.
+4. Nothing further needed - no manual version bump, no manual tag, no manual `npm publish`. Pre-1.0 versioning follows `release-please-config.json`'s `bump-minor-pre-major`/`bump-patch-for-minor-pre-major`: a breaking change bumps the minor version, a feature bumps the patch, until the project reaches `1.0.0` deliberately.
+
+## One-time bootstrap (do this once, before the first real release)
+
+npm's Trusted Publishing has a real chicken-and-egg constraint: **a package must already exist on the registry before a Trusted Publisher can be configured for it** - OIDC can't perform the very first publish. Both steps below are genuinely the user's own action - an npm account login and a registry UI configuration step, not something to run or automate on your own initiative, the same standing rule as `npm publish` itself, `git push`, or installing `git`.
+
+1. **Publish the first version manually.** From a clean checkout, logged into the intended npm account (`npm login`): `npm publish --access public`. This claims the `docmanager-axi` name for real (confirmed available - see `techContext.md`/the CHANGELOG - but never actually claimed until this step runs) and creates the package's own settings page on npmjs.com, which is what step 2 needs to exist first.
+2. **Configure the Trusted Publisher.** On the package's npmjs.com settings page, add a Trusted Publisher: GitHub Actions, this repo's owner/name, workflow filename `release-please.yml` (exact match, case-sensitive - not the full path), no environment needed. Select at least one allowed action (`npm publish`).
+3. From here on, every subsequent release goes through the automated flow above - the manual bootstrap publish is a one-time thing, never repeated.
+
+**Honest limitation, stated plainly rather than glossed over**: this repository is currently private, and npm's provenance attestations (a supply-chain verification badge) aren't generated for packages published from a private source repo - `npm publish --provenance` errors outright there rather than silently skipping it, so the workflow doesn't pass that flag. If this repo is ever made public, provenance is generated automatically once trusted publishing is configured - nothing in this workflow needs to change to pick that up.
+
+## What changed from the old manual checklist
+
+This replaces an earlier fully-manual process (move `CHANGELOG.md`'s `[Unreleased]` section under a dated heading, bump `package.json` by hand, tag, `npm publish` by hand) with the automated flow above. Deliberately not adopted until now, per this project's own original release-hardening framing ("a lightweight, documented checklist is enough, doesn't need automation machinery") - revisited once actually setting up npm publishing made the tradeoff worth it, following the same pattern already proven out in `reactive-axi`'s own `release-please.yml`.

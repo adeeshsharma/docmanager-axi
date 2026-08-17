@@ -1,0 +1,64 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
+
+      - uses: actions/setup-node@v4
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+        if: ${{ steps.release.outputs.release_created }}
+
+      # Same recipe CI already runs on every PR - so a release can never
+      # publish something that wouldn't have passed the normal PR gate.
+      # Redundant with the package's own `prepublishOnly` script (which
+      # `npm publish` below runs automatically regardless), but failing
+      # here attributes a problem clearly to this step rather than deep
+      # inside the publish command's own output.
+      - run: npm run build:skill:check
+        if: ${{ steps.release.outputs.release_created }}
+      - run: npm run build
+        if: ${{ steps.release.outputs.release_created }}
+      - run: npm test
+        if: ${{ steps.release.outputs.release_created }}
+
+      # Trusted Publisher (OIDC) exchange needs npm >=11.5.1 - actions/setup-node's
+      # bundled npm for a given Node version lags behind that, and an older npm
+      # silently falls back to an unauthenticated publish attempt (a bare 404, not
+      # a clear auth error) instead of using the OIDC token at all.
+      - run: npm install -g npm@latest
+        if: ${{ steps.release.outputs.release_created }}
+
+      # No --provenance: this repo is currently private, and npm publish
+      # --provenance errors outright from a private source repo ("Can't
+      # generate provenance for new or private package"), it doesn't just
+      # silently skip it. If the repo is ever made public, trusted
+      # publishing generates provenance automatically on its own - the
+      # explicit flag becomes unnecessary at that point too, not just safe
+      # to add back.
+      - run: npm publish --access public
+        if: ${{ steps.release.outputs.release_created }}
