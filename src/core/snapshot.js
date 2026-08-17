@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { docmanagerHome } from "./paths.js";
 import { storePath, withStoreLock } from "./store.js";
 import { runGit } from "./git.js";
-import { getSettings } from "./settings.js";
+import { getSettings, updateSettings } from "./settings.js";
 import { rebuildIndex } from "./index.js";
 
 function requireRemote() {
@@ -70,9 +70,30 @@ async function ensureRemoteConfigured(url) {
  * fully committed already (every store.js mutation commits immediately), so
  * this never needs to stage anything itself - just configure the remote and
  * push.
+ *
+ * The remote's own privacy and access control is entirely the user's
+ * responsibility - docmanager doesn't manage it, and once real document
+ * content leaves this machine there's no taking it back. Rather than only
+ * mentioning that in the Settings page copy, the first push that would
+ * actually leave this machine refuses until explicitly acknowledged
+ * (`acknowledgePrivacy: true`) - a one-time confirmation, not a prompt on
+ * every push, and never an interactive stdin prompt (the CLI's own
+ * no-interactive-prompts rule) - just a flag the caller has to pass once.
  */
-export async function pushSnapshot() {
+export async function pushSnapshot({ acknowledgePrivacy = false } = {}) {
   const url = requireRemote();
+
+  if (!getSettings().snapshotPrivacyAcknowledged) {
+    if (!acknowledgePrivacy) {
+      const err = new Error(
+        `This will push your tracked document content to "${url}". That remote's privacy and access control is entirely your own responsibility - docmanager never manages or restricts who can see it, and content already pushed there stays there until you remove it yourself. Run \`docmanager snapshot push --acknowledge-privacy\` to proceed - this only needs to be confirmed once, ever.`,
+      );
+      err.code = "PRIVACY_NOT_ACKNOWLEDGED";
+      throw err;
+    }
+    updateSettings({ snapshotPrivacyAcknowledged: true });
+  }
+
   return withStoreLock(async () => {
     if (!existsSync(storePath())) {
       const err = new Error("Nothing to push yet - track a document first.");

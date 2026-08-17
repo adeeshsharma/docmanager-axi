@@ -44,7 +44,7 @@ test("push, fresh clone on a second machine, relink, divergent push rejection, a
   writeFileSync(filePathA, "<html><body>original</body></html>");
   const { family: familyA } = await trackPath(filePathA);
 
-  const pushResult = await pushSnapshot();
+  const pushResult = await pushSnapshot({ acknowledgePrivacy: true });
   assert.equal(pushResult.pushed, true);
 
   // --- Machine B: fresh, no local store yet - pull must clone, not assume ---
@@ -72,7 +72,7 @@ test("push, fresh clone on a second machine, relink, divergent push rejection, a
 
   // --- B edits and pushes first ---
   await recordVersionIfChanged(familyA.id, Buffer.from("<html><body>edited on B</body></html>"));
-  const bPush = await pushSnapshot();
+  const bPush = await pushSnapshot({ acknowledgePrivacy: true });
   assert.equal(bPush.pushed, true);
 
   // --- A, unaware of B's push, edits independently and tries to push: must be rejected ---
@@ -101,7 +101,7 @@ test("a rename made on one machine and pulled on another is reflected in reconci
   const filePathA = join(fixtureA, "report.html");
   writeFileSync(filePathA, "<html><body>v1</body></html>");
   const { family: familyA } = await trackPath(filePathA);
-  await pushSnapshot();
+  await pushSnapshot({ acknowledgePrivacy: true });
 
   await renameTrackedDocument(familyA.id, "/renamed-on-a");
   await pushSnapshot();

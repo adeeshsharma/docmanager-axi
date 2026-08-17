@@ -14,3 +14,12 @@ export function lockFilePath() {
 export function logFilePath() {
   return join(docmanagerHome(), "core.log");
 }
+
+// Working copies materialized for handing a specific version off to an
+// external editor (Lavish Editor) - a predictable, docmanager-owned
+// location rather than making the caller invent a path. Deliberately
+// separate from the store itself: these are disposable scratch files, never
+// synced, never part of the content-addressed history.
+export function editDir() {
+  return join(docmanagerHome(), "edit");
+}

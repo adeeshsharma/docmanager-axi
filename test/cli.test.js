@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -159,6 +159,49 @@ test("search with no query fails loud with a usage error", async () => {
   const { code, stdout } = await runCli(["search"]);
   assert.equal(code, 2);
   assert.match(stdout, /query is required/);
+});
+
+test("families export writes a version's raw content to a file, and fails loud on a bad hash or an unwritable destination", async () => {
+  const filePath = join(fixtureDir, "exportable.html");
+  writeFileSync(filePath, "<html><body>export me</body></html>");
+  const tracked = await runCli(["track", filePath]);
+  const id = tracked.stdout.match(/id: (\S+)/)[1];
+  const view = await runCli(["families", "view", id]);
+  const hash = view.stdout.match(/[0-9a-f]{64}/)[0];
+
+  const destPath = join(fixtureDir, "exported-copy.html");
+  const exported = await runCli(["families", "export", id, hash, "--to", destPath]);
+  assert.equal(exported.code, 0, exported.stderr);
+  assert.match(exported.stdout, /exported:/);
+  assert.equal(readFileSync(destPath, "utf8"), "<html><body>export me</body></html>");
+
+  const badHash = await runCli([
+    "families",
+    "export",
+    id,
+    "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    "--to",
+    destPath,
+  ]);
+  assert.equal(badHash.code, 1);
+  assert.match(badHash.stdout, /CONTENT_NOT_FOUND/);
+
+  const badDest = await runCli(["families", "export", id, hash, "--to", join(fixtureDir, "no-such-dir", "x.html")]);
+  assert.equal(badDest.code, 2);
+  assert.match(badDest.stdout, /Could not write/);
+});
+
+// Only the validation-error paths are exercised here, deliberately - the
+// real success path launches an actual, visible lavish-axi browser session,
+// which a CI/automated run should never do as a side effect.
+test("families lavish fails loud with a usage error when id/hash are missing, and with a real error for an unknown family", async () => {
+  const noArgs = await runCli(["families", "lavish"]);
+  assert.equal(noArgs.code, 2);
+  assert.match(noArgs.stdout, /id and hash are both required/);
+
+  const unknownFamily = await runCli(["families", "lavish", "does-not-exist", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"]);
+  assert.equal(unknownFamily.code, 1);
+  assert.match(unknownFamily.stdout, /FAMILY_NOT_FOUND/);
 });
 
 test("families delete-version works end to end, including chain-healing and the last-version refusal", async () => {

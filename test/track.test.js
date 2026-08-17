@@ -106,3 +106,33 @@ test("untrackFamilies removes a family and its local mapping; one failure never 
   assert.equal(retracked.alreadyTracked, false);
   assert.notEqual(retracked.family.id, family.id);
 });
+
+test("trackPath's FAMILY_PATH_EXISTS error carries the real colliding family's info, not just a bare message", async () => {
+  const original = writeHtml("report.html", "<html><body>original</body></html>");
+  const { family } = await trackPath(original);
+
+  const duplicate = writeHtml("elsewhere/report.html", "<html><body>a different copy</body></html>");
+  await assert.rejects(trackPath(duplicate), (err) => {
+    assert.equal(err.code, "FAMILY_PATH_EXISTS");
+    assert.ok(err.existingFamily, "the error should carry the colliding family's info");
+    assert.equal(err.existingFamily.id, family.id);
+    assert.equal(err.existingFamily.syntheticPath, "/report");
+    assert.equal(err.existingFamily.versionCount, 1);
+    assert.equal(err.existingFamily.headVersion, family.headVersion);
+    assert.ok(err.existingFamily.headCreatedAt, "should include when the head version was created");
+    return true;
+  });
+});
+
+test("trackPaths surfaces existingFamily on each per-path collision result, not just the batch-level error", async () => {
+  const original = writeHtml("report.html", "<html><body>original</body></html>");
+  const { family } = await trackPath(original);
+  const duplicate = writeHtml("elsewhere/report.html", "<html><body>a different copy</body></html>");
+
+  const { results } = await trackPaths([duplicate]);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, "error");
+  assert.equal(results[0].code, "FAMILY_PATH_EXISTS");
+  assert.equal(results[0].existingFamily.id, family.id);
+  assert.equal(results[0].existingFamily.syntheticPath, "/report");
+});

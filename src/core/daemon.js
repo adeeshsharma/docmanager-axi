@@ -4,6 +4,7 @@ import { lockFilePath } from "./paths.js";
 import { VERSION } from "../version.js";
 import { idleMs } from "./activity.js";
 import { onShutdownRequested, requestShutdown } from "./shutdown.js";
+import { rotateLogIfNeeded } from "./log-rotation.js";
 
 // If the lock file this daemon registered itself under disappears or gets
 // overwritten with a different pid - deleted out from under it, replaced by
@@ -61,6 +62,20 @@ function startIdleCheck() {
       requestShutdown(`idle for over ${Math.round(IDLE_TIMEOUT_MS / 60000)} minutes`);
     }
   }, IDLE_CHECK_INTERVAL_MS);
+  timer.unref();
+}
+
+// Rotation also happens once at every daemon spawn (lifecycle.js), which
+// covers the common case of periodic restarts - but a single daemon can
+// stay running far longer than that (continuous activity resets the idle
+// timeout indefinitely), so core.log still needs its own size checked
+// periodically from inside the process that's actually still writing to
+// it, not just at the moment it started.
+const LOG_ROTATION_CHECK_INTERVAL_MS =
+  Number(process.env.DOCMANAGER_LOG_ROTATION_CHECK_INTERVAL_MS) || 30 * 60 * 1000;
+
+function startLogRotationCheck() {
+  const timer = setInterval(rotateLogIfNeeded, LOG_ROTATION_CHECK_INTERVAL_MS);
   timer.unref();
 }
 
@@ -127,6 +142,7 @@ async function start() {
 
   startSelfCheck();
   startIdleCheck();
+  startLogRotationCheck();
 }
 
 start().catch((err) => {

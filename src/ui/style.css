@@ -1247,6 +1247,72 @@ body {
   color: var(--accent-strong);
 }
 
+/* Same specificity reasoning as #settings-form button.link-button above -
+   #track-form button also sets the primary look, so these two reused
+   button styles need the same ID-scoped override to actually apply inside
+   the track-collision cards below. */
+#track-form button.secondary-button {
+  align-self: auto;
+  border: 1px solid var(--sidebar-border);
+  background: var(--sidebar-input-bg);
+  color: var(--sidebar-text);
+  padding: var(--space-1) var(--space-3);
+  font-weight: 600;
+  font-size: 0.76rem;
+}
+
+#track-form button.secondary-button:hover {
+  border-color: var(--accent);
+  color: #efe9ff;
+}
+
+#track-form button.link-button {
+  align-self: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--sidebar-muted);
+  font-weight: 500;
+  font-size: 0.76rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+#track-form button.link-button:hover {
+  color: var(--sidebar-text);
+  background: none;
+}
+
+.track-collisions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.track-collision {
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--sidebar-hover);
+}
+
+.track-collision p {
+  margin: 0 0 var(--space-1);
+  font-size: 0.78rem;
+  color: var(--sidebar-text);
+}
+
+.track-collision p.track-collision-match {
+  color: var(--sidebar-muted);
+}
+
+.track-collision-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
 /* ---------- Reconnect banner ---------- */
 
 .reconnect-banner {

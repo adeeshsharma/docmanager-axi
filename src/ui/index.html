@@ -57,10 +57,11 @@
         <textarea id="track-paths" rows="3" placeholder="/Users/you/Documents/report.html&#10;/Users/you/Documents/old-reports/"></textarea>
         <label class="checkbox-label">
           <input type="checkbox" id="track-relink" />
-          Relink to documents that already exist here from a snapshot
+          Link every match to its existing history automatically (for reconnecting a whole batch at once, e.g. after a snapshot pull)
         </label>
         <button type="submit">Track</button>
         <span id="track-status" class="status-message"></span>
+        <div id="track-collisions" class="track-collisions"></div>
       </form>
     </details>
   </aside>
@@ -95,6 +96,11 @@
               Download
               <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M8 2.5v8M4.5 7l3.5 3.5L11.5 7M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </a>
+            <button id="lavish-prompt-button" type="button" class="open-in-tab" title="Copy a ready-to-paste message for your agent to open this version in Lavish Editor">
+              Edit in Lavish
+              <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4L5.4 13H3v-2.4l8.3-8.3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            </button>
+            <span id="lavish-prompt-status" class="status-message" role="status"></span>
             <button id="untrack-button" type="button" class="open-in-tab untrack-action">Untrack</button>
           </div>
         </header>

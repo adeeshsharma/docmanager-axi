@@ -1,27 +1,62 @@
-# docmanager-axi
+<h1 align="center">docmanager-axi</h1>
+<p align="center">
+  <a href="https://github.com/adeeshsharma/docmanager-axi/actions/workflows/ci.yml"
+    ><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/adeeshsharma/docmanager-axi/ci.yml?style=flat-square&label=ci"
+  /></a>
+  <a href="https://www.npmjs.com/package/docmanager-axi"
+    ><img alt="npm" src="https://img.shields.io/npm/v/docmanager-axi?style=flat-square"
+  /></a>
+  <a href="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
+    ><img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square"
+  /></a>
+  <a href="./LICENSE"
+    ><img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"
+  /></a>
+</p>
 
-Manages and versions the HTML documents on your machine: track a file, and every real edit to it becomes a new version automatically, the way git tracks commits, but purpose-built for HTML rather than source code. Snapshot the whole thing to a git remote you control and pull it back down on another machine, with no dependency on that machine's file layout.
+<h3 align="center">Git for HTML documents - tracked, versioned, and synced by your coding agent.</h3>
 
-This tool manages and versions documents. It does not edit them - that's a job for a different tool.
+<p align="center">
+  <img alt="docmanager-axi walkthrough: an agent tracks a document, the web UI opens and reads it, a real edit gets captured as a new version automatically, then a snapshot syncs to a remote and pulls down on a second machine" src="media/demo.gif" width="900" />
+</p>
+<p align="center"><a href="media/demo.mp4">Full-length video (media/demo.mp4)</a></p>
 
-Everything runs locally, bound to loopback only. Nothing leaves your machine except when you explicitly push a snapshot to a git remote you configure yourself.
+Every "which version of this HTML is actually current" question turns into hunting through a downloads folder full of `report-final-v2-ACTUAL.html`. **docmanager-axi** tracks HTML documents the way git tracks code: point it at a file once, and every real edit becomes a new version automatically - no commit step, no confirmation, nothing to remember. It runs entirely on your own machine.
 
-Full design rationale and the phased build plan are in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+- **Agent-first** - the whole surface is a CLI your coding agent drives directly: TOON output, structured errors with real exit codes, idempotent commands. A local web UI exists too, for you to read documents and browse history by hand, but the CLI is the primary interface.
+- **Local-first** - no server, no account, no cloud component of any kind, unless you deliberately point it at a git remote you control for cross-machine sync.
+- **Automatic, not automated-guessing** - a change to a file you already told it to track becomes a new version with no confirmation needed, since there's nothing ambiguous about it. A newly noticed file that merely *resembles* an existing one is only ever suggested, never auto-linked - that connection is always your call.
+- **Real history, not a snapshot** - every version is content-addressed and kept, diffable and revertible, synced across machines through a git remote you already trust.
 
-## Status
+docmanager-axi is an [AXI](https://axi.md), which means -
 
-v1, functionally complete against its own design: tracking, automatic version capture, a local web UI, cross-machine snapshot sync, and agent session integration all work and have been verified end to end, including two-machine sync scenarios (clone, relink, merge, conflict). Verification so far has been on macOS only - Windows and Ubuntu are believed compatible (pure Node APIs, cross-platform dependencies throughout) but not yet actually run there. Not yet published to npm.
+- It's just a CLI any capable agent can run once installed - no special SDK needed on the agent's side.
+- It's optimized for agent ergonomics: TOON output, structured errors with real exit codes (`0` success, `1` error, `2` usage error), idempotent mutations (tracking an already-tracked file is a no-op, not an error), and it fails loud on an unrecognized flag instead of silently ignoring it.
+- The Agent Skill and the session-start hook are how an agent actually learns the tool - the skill for on-demand loading in any agent that supports the format, the hook for ambient context at the start of every session so a fresh agent already knows what's tracked without being told.
 
-## Prerequisites
+## Quick Start
 
-- Node.js 20 or later.
-- `git`, already installed and on `PATH`. The content store is a real git repository under the hood; this is not optional.
+**Regardless of which install method you use below, always run this first:**
 
-If `git` is missing, `docmanager` fails with a clear error rather than a raw stack trace. If an agent is setting this up on your behalf, it should tell you `git` is missing and ask before running any install command - never install it silently.
+```sh
+npx skills add adeeshsharma/docmanager-axi --skill docmanager
+```
 
-## Install
+This installs the Agent Skill in the [Agent Skills](https://agentskills.io) format with [`npx skills`](https://github.com/vercel-labs/skills) - it teaches your agent the full command surface (`track`, `status`, `families`, `diff`, `revert`, `rename`, `tags`, `search`, `snapshot push`/`pull`, `setup ssh`) and the real invariants that matter: a change to an already-tracked file is captured automatically with no confirmation; a newly noticed file that merely resembles an existing one is only ever suggested, never auto-linked; and installing `git` or generating an SSH key are real changes to your machine that always need your own explicit, in-the-moment approval - never taken on the agent's own initiative. **Without this step, your agent is driving the raw CLI by hand with no guidance on what these commands actually guarantee.**
 
-Not published to npm yet - clone this repository and link it locally instead:
+By default the skill lands in the current project's skills directory (`.claude/skills/`, for example); add `-g` to install it for all projects (`~/.claude/skills/`).
+
+Then, once the CLI itself is installed (see below), install the session-start hook so a new agent session opens already knowing what's tracked:
+
+```sh
+docmanager setup hooks
+```
+
+Works for Claude Code, Codex, or OpenCode (whichever is present). The skill and the hook teach an agent the same thing; use whichever your setup supports, or both.
+
+## Install the CLI
+
+### From source (current - not yet published to npm)
 
 ```sh
 git clone git@github.com:adeeshsharma/docmanager-axi.git
@@ -30,167 +65,117 @@ npm install
 npm link          # puts `docmanager` on PATH, backed by this checkout
 ```
 
-`npm link` gives the same `docmanager <command>` experience the eventual `npm install -g docmanager-axi` will, just pointed at your local checkout instead of the registry. Don't want a global link? Run everything as `node bin/docmanager.js <command>` from inside the checkout instead - identical behavior either way.
+`npm link` gives the same `docmanager <command>` experience the eventual `npm install -g docmanager-axi` will, just pointed at your local checkout instead of the registry. Prefer not to touch global npm links? Run everything as `node bin/docmanager.js <command>` from inside the checkout instead - identical behavior.
 
-## Quick start
-
-```sh
-docmanager track ./report.html          # start tracking a document
-docmanager status                       # see what's tracked, reconciled against disk
-docmanager families                     # list tracked documents
-docmanager families view <id>           # one document's version history
-docmanager search "quarterly numbers"   # keyword search across everything tracked
-docmanager ui                           # open the local web UI
-```
-
-Edit a tracked file and save it. The next `docmanager status` (or opening/refocusing the UI) automatically records it as a new version - no confirmation needed, since there's nothing ambiguous about a change to a file you already told it to track.
-
-If two separately-tracked files turn out to be the same document at different points in time:
+### Once published to npm (not yet available)
 
 ```sh
-docmanager link <olderId> <newerId>     # newerId supersedes olderId
+npm install -g docmanager-axi
 ```
-
-docmanager never guesses this connection on its own, but it will nudge: `docmanager families`/`status` flags a `possibleDuplicates` entry when two separately-tracked documents share a normalized title or near-identical structure. It's a cheap heuristic, not a determination - review it and run `link` yourself if it's really the same document.
-
-See what changed between two versions, or make an older one current again:
 
 ```sh
-docmanager families diff <id> <hashA> <hashB>    # a line diff, computed on normalized content
-docmanager families revert <id> <hash>           # makes that version current again
+# or, without a global install:
+npx docmanager-axi <command>
 ```
 
-`revert` only changes docmanager's own history - it never edits the real file on disk. If the real file still holds newer content afterward, the next `status` reports it as behind, the same way a change pulled in from another machine would.
+## Prerequisites
 
-The CLI's diff is a source-line diff, for scripting and precision. The UI's "Compare versions" button opens a dedicated view with a "Rendered" option too: both versions shown as actual pages side by side, changed blocks (paragraphs, list items, headings...) highlighted red and green, scrolling both sides together - for reading what changed, not auditing markup.
+- Node.js 20 or later.
+- `git`, already installed and on `PATH`. The content store is a real git repository under the hood; this is not optional.
 
-Want to permanently discard a specific version instead of just moving past it?
+If `git` is missing, `docmanager` fails with a clear, structured error instead of a raw stack trace. If an agent is setting this up on a user's behalf, it should say `git` is missing and ask before running any install command - never install it silently. This exact rule is baked into the Agent Skill above.
 
-```sh
-docmanager families delete-version <id> <hash>
+## How It Works
+
+```
+┌────────────────────────────┐
+│ docmanager track <path>    │
+│ hashes the content, creates│
+│ a family + its first       │
+│ version                    │
+└──────────────┬─────────────┘
+               ▼
+┌────────────────────────────┐
+│ Edit the file, save it. The│
+│ next read (a status check, │
+│ opening the UI) captures a │
+│ new version automatically -│
+│ no confirmation needed     │
+└──────────────┬─────────────┘
+               ▼
+┌────────────────────────────┐
+│ docmanager ui - read any   │
+│ version, diff two of them, │
+│ revert, rename, tag        │
+└──────────────┬─────────────┘
+               ▼
+┌────────────────────────────┐
+│ docmanager snapshot push - │
+│ full history to a git      │
+│ remote you control; pull it│
+│ down on another machine    │
+└────────────────────────────┘
 ```
 
-This removes just that version's own record - not the whole document (`untrack` does that) - and heals the history around it so nothing is left pointing at a version that no longer exists. It refuses if it's the only version a family has left.
+- **Tracking** - `docmanager track <path>... [--as <name>] [--relink]` starts tracking one or more files and/or whole folders in one call. A folder is expanded recursively for `.html` files, skipping vendor/build directories (`node_modules`, `.git`, `dist`, and similar) by default, so pointing it at a folder that happens to contain other projects only ever picks up documents that actually belong to the user. One target failing never aborts the rest of a batch.
+- **Automatic version capture** - a change to an already-tracked file becomes a new version the next time anything reads state (`docmanager status`, opening the UI). No live filesystem watcher in this version - reconciliation is triggered by a read, not continuous.
+- **Never guesses a link** - `docmanager families`/`status` may flag a `possibleDuplicates` entry when two separately-tracked documents share a normalized title or near-identical structure. It's a cheap heuristic nudge, never acted on automatically - review it and run `docmanager link <fromId> <toId>` yourself if it really is the same document.
+- **Diff, revert, delete a version** - `docmanager families diff <id> <hashA> <hashB>` (a line diff on normalized content, so whitespace-only differences never show up as fake changes), `docmanager families revert <id> <hash>` (moves the current version back; never edits the real file on disk), `docmanager families delete-version <id> <hash>` (permanently discards one version's record, healing the history around it - refuses on a document's only remaining version).
+- **Rename and tag** - `docmanager families rename <id> <newPath>` changes a document's synthetic path without losing any history. `docmanager families tags <id> [--set/--add/--remove]` attaches free-form labels, indexed for search too.
+- **Edit a version with Lavish Editor** - the UI's "Edit in Lavish" button copies a ready-to-paste message for your agent, naming the exact version you're looking at. docmanager doesn't run the editing session itself (it has no agent loop of its own) - the agent does: `docmanager families lavish <id> <hash>` exports that version to a docmanager-owned working file and opens it in Lavish Editor in one step, using docmanager's own bundled `lavish-axi` dependency directly (never `npx`, never a global install), then `docmanager track <path> --as <name> --relink` + `docmanager status` capture the result as the next version once the review session ends - nothing is logged before that.
+- **Keyword search** - `docmanager search <query>` finds a tracked document by the words actually in its path, title, or text (including tags). Not semantic search - it won't find a document by meaning alone.
+- **Cross-machine sync** - `docmanager settings set --snapshot-remote <git-url>` then `docmanager snapshot push`/`pull`. A pull on a brand-new machine reconstructs the full document and version history immediately; the one manual step is reconnecting a synthetic path to a live file with `track --as <path> --relink`, since the tool never guesses that a file on a new machine is the same as one from a snapshot. A genuine sync conflict aborts cleanly with zero data loss on either side, never auto-resolved. The remote's own privacy is entirely your responsibility - docmanager adds no access control on top of it - so the very first push refuses until you run `docmanager snapshot push --acknowledge-privacy`; a one-time confirmation, never asked again after.
+- **Fresh-machine auth** - an HTTPS remote can use an access token (`docmanager settings set --snapshot-remote-token <token>`, local-only, never part of a snapshot); an SSH remote uses this machine's own key, checked read-only with `docmanager setup ssh` (never generates a key on its own - the same approval-gating rule as installing `git`).
+- **The background service** - the first `docmanager` command starts a small background process automatically; it stops itself after a long period of no activity, or immediately with `docmanager core stop`. After an upgrade, it also detects that it's running older code than what's actually installed and restarts itself transparently the next time it's needed.
+- **`docmanager doctor`** - checks git/store/index/local-state health, auto-repairing what's provably safe and reporting the rest for a human to decide.
+- **`docmanager reset --confirm`** - the safe, supported way to delete everything and start fresh, instead of manually removing `~/.docmanager`. Irreversible, refuses without `--confirm`, and an agent must never run it on its own initiative - the same rule as installing `git` or generating an SSH key.
+- **`docmanager gc`** - runs `git gc` on the local store to compact its history and reclaim disk space, since every version of every tracked document is a git commit forever. Non-destructive (document data is untouched) and opt-in - never run automatically.
 
-Everyday housekeeping: rename a document's synthetic path without losing any history, or attach free-form tags to it.
-
-```sh
-docmanager families rename <id> <newSyntheticPath>
-docmanager families tags <id> --set "draft, q3"     # replaces the whole tag set
-docmanager families tags <id> --add internal        # adds one tag
-docmanager families tags <id> --remove draft         # removes one tag
-docmanager families tags <id>                        # shows current tags, no flags needed
-```
-
-Tags are indexed for search too - `docmanager search draft` finds a document by tag the same way it finds one by title or body text. The UI's document view has the same two actions: a pencil icon next to the title to rename, tag chips underneath it to add or remove tags, and a "Download" button next to "Open in new tab" to save a specific version as a file. The sidebar list also supports selecting multiple documents at once for a bulk untrack.
-
-## Syncing across machines
-
-```sh
-docmanager settings set --snapshot-remote <git-url>
-docmanager snapshot push                # push the local store
-docmanager snapshot pull                # pull it down elsewhere - clones fresh on a new machine
-```
-
-On a brand-new machine, `snapshot pull` reconstructs your full document and version history immediately. The one manual step: reconnecting a synthetic path to a live file on that machine.
-
-```sh
-docmanager track ./report.html --as /report --relink
-```
-
-`--relink` is required specifically because the tool never guesses that a file on a new machine is the same as one from a snapshot - that's always your call. Once relinked, ordinary edits are captured automatically again.
-
-A genuine sync conflict (the same document changed differently on two machines before syncing) is never auto-resolved: the pull aborts cleanly, nothing local is touched, and you resolve it with git directly in `~/.docmanager/store`.
-
-### A fresh machine with no git auth configured yet
-
-If the remote is HTTPS and this machine doesn't already have a credential helper set up:
-
-```sh
-docmanager settings set --snapshot-remote-token <token>
-```
-
-Stored locally only, never part of a snapshot, sent only on the actual push/pull request - `docmanager settings get` never shows the value back, only whether one is saved.
-
-If the remote is SSH (`git@host:...`), the token above does nothing - authentication comes from this machine's own SSH key. Check whether that's actually working:
-
-```sh
-docmanager setup ssh
-```
-
-Read-only: it looks for an existing key and tests the connection, but never generates one. If none is found, generating a new SSH key is a real change to your machine - your agent should only do that with your explicit go-ahead, not on its own.
-
-## Agent session integration
-
-```sh
-docmanager setup hooks
-```
-
-Installs a session-start hook for Claude Code, Codex, or OpenCode (whichever is present), so a new agent session opens already knowing what documents are tracked, rather than needing to be told.
-
-An installable Agent Skill is also available for agents or harnesses that don't support session-start hooks:
-
-```sh
-npx skills add adeeshsharma/docmanager-axi --skill docmanager
-```
-
-The skill and the session hook teach an agent the same thing; use whichever your setup supports, or both.
-
-## The background service
-
-The first `docmanager` command you run starts a small background process automatically - there is no separate start step. It keeps running across further commands so it never has to cold-start each time, and stops itself automatically after a long period of no activity (several hours by default), so a process you started once and forgot about doesn't run forever. An open UI tab counts as real activity on its own, so the timeout never fires while you're actually using it.
-
-You can also stop it immediately, either from the UI's Settings page or with `docmanager core stop`. Either way, the next command from you, an agent, or the UI starts it again automatically - nothing needs to be told it happened.
-
-After an `npm update` (or any upgrade), an already-running background process keeps executing the old code it loaded at startup - it has no way to notice new files landing on disk while it's still running. `docmanager` detects this automatically (comparing the running core's own reported version against the CLI's) and restarts it transparently the next time it's needed, so you never end up silently running stale code after an upgrade. `docmanager core status` reports it plainly if you check while it's in that state, even though it hasn't restarted itself yet.
-
-## Appearance
-
-The UI follows your system's light/dark preference by default. To override it, go to Settings → Appearance and pick System, Light, or Dark. This is a display preference for this browser only - it's never sent to the core or included in a snapshot.
-
-## Command reference
+## CLI Reference
 
 | Command | Does |
 |---|---|
 | `docmanager` | Show current state: core status, tracked document count |
-| `docmanager track <path>... [--as <name>] [--relink]` | Start tracking one or more files and/or folders (folders are tracked recursively, skipping vendor/build directories such as `node_modules`, `.git`, `dist`) |
+| `docmanager track <path>... [--as <name>] [--relink]` | Start tracking one or more files and/or folders |
 | `docmanager untrack <id>...` | Stop tracking one or more documents (does not delete the real files) |
 | `docmanager link <fromId> <toId>` | Declare that `toId` supersedes `fromId` |
 | `docmanager families` | List tracked documents |
 | `docmanager families view <id>` | One document's full version history |
-| `docmanager search <query>` | Keyword search over tracked documents' paths, titles, and text (not semantic search) |
 | `docmanager families diff <id> <hashA> <hashB>` | Show what changed between two versions |
-| `docmanager families revert <id> <hash>` | Make an older version current again (docmanager's history only, real file untouched) |
-| `docmanager families delete-version <id> <hash>` | Permanently discard one version's record (not the whole document - see `untrack`) |
+| `docmanager families revert <id> <hash>` | Make an older version current again (history only, real file untouched) |
+| `docmanager families delete-version <id> <hash>` | Permanently discard one version's record |
+| `docmanager families export <id> <hash> --to <path>` | Write one version's raw content to a file |
+| `docmanager families lavish <id> <hash>` | Export a version and open it in Lavish Editor, in one step |
 | `docmanager families rename <id> <newSyntheticPath>` | Change a document's synthetic path, keeping its full history |
-| `docmanager families tags <id> [--set "a,b"] [--add <tag>] [--remove <tag>]` | View or change a document's tags (no flags shows current tags) |
+| `docmanager families tags <id> [--set "a,b"] [--add <tag>] [--remove <tag>]` | View or change a document's tags |
+| `docmanager search <query>` | Keyword search over tracked documents' paths, titles, tags, and text |
 | `docmanager status` | Reconcile and show current tracked state |
-| `docmanager settings get` / `set --snapshot-remote <url>` / `set --snapshot-remote-token <token>` | Read or write settings (the token is never echoed back by `get`) |
-| `docmanager snapshot push` / `pull` | Sync the store with the configured remote |
+| `docmanager settings get` / `set --snapshot-remote <url>` / `set --snapshot-remote-token <token>` | Read or write settings |
+| `docmanager snapshot push [--acknowledge-privacy]` / `pull` | Sync the store with the configured remote (first push ever needs the flag once) |
 | `docmanager ui` | Open the local web UI |
 | `docmanager setup hooks` | Install agent session-start integration |
 | `docmanager setup ssh` | Read-only SSH auth check for the configured remote - never generates a key |
 | `docmanager core start` / `status` / `stop` | Manage the background service directly |
-| `docmanager doctor` | Check git/store/index/local-state health; auto-repairs what's safe to, reports the rest |
+| `docmanager doctor` | Check git/store/index/local-state health |
+| `docmanager reset --confirm` | Permanently delete everything and start fresh (irreversible) |
+| `docmanager gc` | Compact store history and reclaim disk space (non-destructive, opt-in) |
 | `docmanager update [--check]` | Self-update (built in, no per-tool code) |
 
 Every command's full flag reference is available via `--help`, e.g. `docmanager track --help`.
-
-## How it works, briefly
-
-A long-running local service (started automatically on first use) owns all state: a content-addressed git repository for document content and version history, plus a local SQLite index for fast queries. A local web UI and the `docmanager` CLI are both clients of that one service, so an action taken in the UI and an action taken by an agent through the CLI are always looking at the same, immediately-consistent state. Full detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Development
 
 ```sh
 npm install
 npm run build     # copies src/ui into dist/ui; server.js serves dist/ui when present, src/ui otherwise
-npm test          # node's built-in test runner - store, tracking, reconcile, snapshot sync, and a real CLI smoke test
+npm test          # node's built-in test runner
 node bin/docmanager.js --help
 ```
 
-No bundler, no framework for the CLI, core, or UI - all plain Node/HTML/CSS/JS, deliberately, to keep the published package small. `npm test` uses `DOCMANAGER_HOME`/`DOCMANAGER_PORT` overrides internally to fully isolate itself from any real, already-running core on this machine - safe to run alongside normal use. CI (`.github/workflows/ci.yml`) runs the same suite plus `npm run build` and `npm pack --dry-run` on macOS, Windows, and Ubuntu.
+No bundler, no framework for the CLI, core, or UI - all plain Node/HTML/CSS/JS, to keep the published package small. `npm test` uses `DOCMANAGER_HOME`/`DOCMANAGER_PORT` overrides internally to fully isolate itself from any real, already-running core on the same machine - safe to run alongside normal use. CI runs the same suite, `npm run build:skill:check` (fails if the committed Agent Skill has drifted from its source), `npm run build`, and `npm pack --dry-run` on macOS, Windows, and Ubuntu.
+
+See [CHANGELOG.md](./CHANGELOG.md) for what's changed, and [RELEASING.md](./RELEASING.md) for the release checklist.
 
 ## License
 
-[MIT](./LICENSE)
+MIT © [Adeesh Sharma](https://github.com/adeeshsharma) - see [LICENSE](./LICENSE).

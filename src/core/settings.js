@@ -18,6 +18,10 @@ const DEFAULTS = {
   // redaction boundary; this module itself stores and returns it plainly,
   // since core-internal callers (snapshot.js) need the real value.
   snapshotRemoteToken: null,
+  // Set internally, once, by the first successful `snapshot push` that
+  // actually goes through - not something exposed via `docmanager settings
+  // set` directly. See snapshot.js's own privacy-nudge check.
+  snapshotPrivacyAcknowledged: false,
 };
 
 const ALLOWED_KEYS = new Set(Object.keys(DEFAULTS));
