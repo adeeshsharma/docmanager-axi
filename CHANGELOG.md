@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 From the first real release onward, new entries below this point are generated automatically by [release-please](https://github.com/googleapis/release-please) from [Conventional Commits](https://www.conventionalcommits.org/) - see `RELEASING.md`. The `[Unreleased]` section below predates that and is hand-written, describing the full pre-release v1 feature set as a single snapshot rather than a per-commit log.
 
+## 1.0.0 (2026-08-17)
+
+
+### Bug Fixes
+
+* deleting a version could resurrect it on the next reconcile ([#3](https://github.com/adeeshsharma/docmanager-axi/issues/3)) ([0739d39](https://github.com/adeeshsharma/docmanager-axi/commit/0739d3962870b4df402c3d57c1c947f448cea525))
+
 ## [Unreleased]
 
 Not yet published to npm - see `RELEASING.md` for what that involves. Everything below is the full v1 feature set as it currently stands.
