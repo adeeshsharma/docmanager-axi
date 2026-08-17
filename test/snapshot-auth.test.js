@@ -17,6 +17,50 @@ afterEach(() => {
   cleanupHome(homeDir);
 });
 
+test("first push refuses without acknowledgePrivacy, and never reaches the remote", async () => {
+  const remoteDir = mkdtempSync(join(tmpdir(), "docmanager-privacytest-remote-"));
+  const fixtureDir = mkdtempSync(join(tmpdir(), "docmanager-privacytest-fixture-"));
+  try {
+    await runGit(remoteDir, ["init", "--bare"]);
+    updateSettings({ snapshotRemote: remoteDir });
+
+    const filePath = join(fixtureDir, "doc.html");
+    writeFileSync(filePath, "<html><body>v1</body></html>");
+    await trackPath(filePath);
+
+    await assert.rejects(pushSnapshot(), (err) => err.code === "PRIVACY_NOT_ACKNOWLEDGED");
+
+    // Refused before ever touching the remote - the bare repo must still have no commits on main.
+    const branches = await runGit(remoteDir, ["branch", "--list"]);
+    assert.equal(branches.trim(), "", "a refused push must never reach the remote");
+  } finally {
+    rmSync(remoteDir, { recursive: true, force: true });
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
+});
+
+test("acknowledging privacy once persists it - a second push never needs to re-acknowledge", async () => {
+  const remoteDir = mkdtempSync(join(tmpdir(), "docmanager-privacytest-remote2-"));
+  const fixtureDir = mkdtempSync(join(tmpdir(), "docmanager-privacytest-fixture2-"));
+  try {
+    await runGit(remoteDir, ["init", "--bare"]);
+    updateSettings({ snapshotRemote: remoteDir });
+
+    const filePath = join(fixtureDir, "doc.html");
+    writeFileSync(filePath, "<html><body>v1</body></html>");
+    await trackPath(filePath);
+
+    const first = await pushSnapshot({ acknowledgePrivacy: true });
+    assert.equal(first.pushed, true);
+
+    const second = await pushSnapshot();
+    assert.equal(second.pushed, true, "no acknowledgePrivacy needed once already acknowledged");
+  } finally {
+    rmSync(remoteDir, { recursive: true, force: true });
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
+});
+
 test("isHttpsRemote is true only for http(s) URLs, not SSH or local paths", () => {
   assert.equal(isHttpsRemote("https://github.com/you/repo.git"), true);
   assert.equal(isHttpsRemote("http://internal-git/you/repo.git"), true);
@@ -55,7 +99,7 @@ test("a configured token never breaks a real push/pull against a local (non-HTTP
     writeFileSync(filePath, "<html><body>v1</body></html>");
     await trackPath(filePath);
 
-    const pushResult = await pushSnapshot();
+    const pushResult = await pushSnapshot({ acknowledgePrivacy: true });
     assert.equal(pushResult.pushed, true);
   } finally {
     rmSync(remoteDir, { recursive: true, force: true });
@@ -74,7 +118,7 @@ test("pullSnapshot's clone path also tolerates a configured token against a loca
     const filePath = join(fixtureDir, "doc.html");
     writeFileSync(filePath, "<html><body>v1</body></html>");
     await trackPath(filePath);
-    await pushSnapshot();
+    await pushSnapshot({ acknowledgePrivacy: true });
 
     process.env.DOCMANAGER_HOME = secondHome;
     updateSettings({ snapshotRemote: remoteDir, snapshotRemoteToken: "ghp_shouldbeignored" });

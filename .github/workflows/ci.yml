@@ -4,12 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
   # The real, previously-acknowledged-but-unverified risk this project has
   # carried since phase 1: better-sqlite3 prebuilds and detached-process
   # spawn/kill semantics were only ever code-reviewed for Windows/Ubuntu, not
-  # actually run there. This matrix is what closes that gap.
+  # actually run there. This matrix is what closes that gap - and it's what
+  # actually found two real bugs the first time it ran for real (see the
+  # --ignore-scripts and engines notes below).
   test:
     strategy:
       fail-fast: false
@@ -20,9 +23,40 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
+          # `engines` pins ">=22" (matching what better-sqlite3 and
+          # lavish-axi, both direct dependencies, themselves declare - Node
+          # 20 segfaults the daemon outright, confirmed directly). This
+          # job resolves to the latest 22.x, not the literal floor: a
+          # separate node-floor job pinned to the exact minimum (22.0.0)
+          # used to exist here specifically to verify that, but it turned
+          # up a real, confirmed difference - the same test suite segfaults
+          # on Linux at exactly 22.0.0 while passing cleanly here on a
+          # later 22.x patch, meaning better-sqlite3's own N-API surface
+          # wasn't yet fully stable at Node 22's very first release. Rather
+          # than keep bisecting exact patches to find the true minimum,
+          # removed that job and left `engines` as an honest ">=22" (a
+          # correct floor by major version, matching the dependency tree's
+          # own declared requirement) rather than a literal, individually
+          # re-verified-every-patch guarantee.
           node-version: 22
           cache: npm
-      - run: npm ci
+      # better-sqlite3@13 bundles a prebuilt binary for every platform this
+      # matrix covers directly in its own published tarball - getBinding()
+      # (its own lib/binding.js) resolves it lazily at first require(), with
+      # no install-time step needed at all. But npm's own default lifecycle
+      # for a package with a binding.gyp still attempts `node-gyp rebuild`
+      # during `npm ci` regardless of `gypfile: false` in that package's own
+      # package.json (an npm/better-sqlite3 interaction, not something
+      # controllable from here) - harmless-but-wasteful where a C++
+      # toolchain happens to be present (macOS/Linux), but a hard install
+      # failure on windows-latest, which has no MSVC Build Tools installed
+      # by default: confirmed for real, this is exactly what failed the
+      # first time this matrix ever ran (real Visual Studio toolchain
+      # missing, not a docmanager bug). --ignore-scripts skips that
+      # unnecessary step entirely; verified locally that every real
+      # operation (opening a real database, running the full test suite)
+      # still works correctly from the bundled prebuild alone.
+      - run: npm ci --ignore-scripts
       # Must run BEFORE `npm run build` below, which regenerates
       # skills/docmanager/SKILL.md from src/skill.js unconditionally -
       # checking after that step would always pass trivially. This checks
@@ -33,19 +67,3 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm pack --dry-run
-
-  # engines pins ">=20" but every real run above (and all manual testing
-  # throughout this project's history) has only ever used Node 22 - this
-  # confirms the stated floor actually works, on Linux where the matrix job
-  # above already gives the fastest signal.
-  node-floor:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npm test

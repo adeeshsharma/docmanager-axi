@@ -29,6 +29,29 @@ async function request(method, path, body) {
   return json;
 }
 
+// Separate from request() above on purpose: /content/:hash returns raw HTML
+// text, not JSON - request()'s res.json() would throw on it and silently
+// swallow the real body (the catch block there exists for a genuinely empty
+// response, not this).
+async function requestRaw(path) {
+  const { port } = await ensureCoreRunning();
+  const res = await fetch(`http://127.0.0.1:${port}${path}`);
+  if (!res.ok) {
+    let json = null;
+    try {
+      json = await res.json();
+    } catch {
+      // Non-JSON error body - fall through with json still null.
+    }
+    const message = json?.error ?? `Request to docmanager core failed with status ${res.status}`;
+    const err = new Error(message);
+    err.code = json?.code;
+    err.status = res.status;
+    throw err;
+  }
+  return res.text();
+}
+
 export const coreClient = {
   trackDocuments: (paths, as, relink) => request("POST", "/documents/track", { paths, as, relink }),
   untrackDocuments: (ids) => request("POST", "/documents/untrack", { ids }),
@@ -44,8 +67,10 @@ export const coreClient = {
   getFamily: (id) => request("GET", `/families/${id}`),
   getSettings: () => request("GET", "/settings"),
   updateSettings: (patch) => request("PUT", "/settings", patch),
-  pushSnapshot: () => request("POST", "/snapshot/push"),
+  pushSnapshot: (acknowledgePrivacy = false) => request("POST", "/snapshot/push", { acknowledgePrivacy }),
   pullSnapshot: () => request("POST", "/snapshot/pull"),
   runDoctor: () => request("GET", "/doctor"),
+  runGc: () => request("POST", "/maintenance/gc"),
+  exportContent: (hash) => requestRaw(`/content/${encodeURIComponent(hash)}`),
   checkSsh: () => request("GET", "/ssh-check"),
 };

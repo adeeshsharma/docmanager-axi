@@ -42,9 +42,21 @@ export async function trackPath(inputPath, { as, relink } = {}) {
   if (existingFamily) {
     if (!relink) {
       const err = new Error(
-        `A family already exists at synthetic path "${syntheticPath}". If this is the same document reconnecting on a new machine, pass --relink.`,
+        `A family already exists at synthetic path "${syntheticPath}". If this is the same document, pass --relink.`,
       );
       err.code = "FAMILY_PATH_EXISTS";
+      // Attached so a caller (the UI in particular) can show WHICH existing
+      // document this collided with - title, how many versions it already
+      // has, when it was last touched - rather than a bare "already exists"
+      // error the user has no way to act on informedly.
+      err.existingFamily = {
+        id: existingFamily.id,
+        syntheticPath: existingFamily.syntheticPath,
+        title: existingFamily.title,
+        versionCount: Object.keys(existingFamily.versions).length,
+        headVersion: existingFamily.headVersion,
+        headCreatedAt: existingFamily.versions[existingFamily.headVersion]?.createdAt ?? null,
+      };
       throw err;
     }
     addMapping({ syntheticPath, realPath, familyId: existingFamily.id });
@@ -206,7 +218,13 @@ export async function trackPaths(inputPaths, { as, relink } = {}) {
         family,
       });
     } catch (err) {
-      results.push({ path: target.filePath, status: "error", error: err.message, code: err.code });
+      results.push({
+        path: target.filePath,
+        status: "error",
+        error: err.message,
+        code: err.code,
+        ...(err.existingFamily ? { existingFamily: err.existingFamily } : {}),
+      });
     }
   }
 

@@ -1,8 +1,13 @@
 import open from "open";
+import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
 import { runAxiCli, AxiError, installSessionStartHooks } from "axi-sdk-js";
 import { VERSION } from "./version.js";
-import { ensureCoreRunning, coreStatus, stopCore } from "./core/lifecycle.js";
+import { ensureCoreRunning, coreStatus, stopCore, waitForProcessExit } from "./core/lifecycle.js";
+import { editDir, docmanagerHome } from "./core/paths.js";
 import { coreClient } from "./cli/client.js";
+import { resolveLavishCli, editFileName } from "./cli/lavish.js";
 
 const TOP_LEVEL_HELP = `docmanager - manage and version HTML documents on your local machine
 
@@ -25,6 +30,13 @@ Usage:
   docmanager families delete-version <id> <hash>
                                        Permanently remove one version's record (not the whole document -
                                        see untrack for that). Refuses on a family's only remaining version
+  docmanager families export <id> <hash> --to <path>
+                                       Write one version's raw content to a file - e.g. to hand off to
+                                       another tool for editing, then track/--relink it back
+  docmanager families lavish <id> <hash>
+                                       Open one version in Lavish Editor for review (docmanager's own
+                                       dependency, no separate install needed). Poll it yourself as usual;
+                                       when the session ends, track/--relink + status to save the result
   docmanager families rename <id> <newSyntheticPath>
                                        Change a tracked document's synthetic path, keeping its full history
   docmanager families tags <id> [--set "a,b"] [--add <tag>] [--remove <tag>]
@@ -34,7 +46,10 @@ Usage:
                                        version only, not semantic search)
   docmanager settings get             Show current settings
   docmanager settings set --snapshot-remote <url>   Set the snapshot git remote
-  docmanager snapshot push            Push the local store to the snapshot remote
+  docmanager snapshot push [--acknowledge-privacy]
+                                       Push the local store to the snapshot remote. First-ever push refuses
+                                       until --acknowledge-privacy confirms you understand the remote's own
+                                       privacy is your responsibility - one-time, never asked again after
   docmanager snapshot pull            Pull the snapshot remote (clones fresh on a new machine)
   docmanager ui                       Open the local web UI
   docmanager setup hooks              Install session-start ambient context for your agent
@@ -42,6 +57,11 @@ Usage:
                                        remote (read-only - never generates a key on its own)
   docmanager core start|status|stop   Manage the core service directly
   docmanager doctor                   Check git/store/index/local-state health, auto-repair what's safe to
+  docmanager gc                       Run git gc on the local store to compact history and reclaim disk
+                                       space. Opt-in maintenance, never run automatically
+  docmanager reset --confirm          Permanently delete all tracked history and settings - the safe
+                                       alternative to manually removing ~/.docmanager. Irreversible; refuses
+                                       without --confirm. An agent must never run this on its own initiative
   docmanager --version                Print the version
   docmanager --help                   Show this help`;
 
@@ -91,6 +111,8 @@ const ERROR_SUGGESTIONS = {
   FAMILY_PATH_EXISTS: ["Choose a different --as synthetic path, or link to the existing family instead"],
   FAMILY_NOT_FOUND: ["Run `docmanager families` to see valid ids"],
   VERSION_NOT_FOUND: ["Run `docmanager families view <id>` to see valid version hashes"],
+  CONTENT_NOT_FOUND: ["Run `docmanager families view <id>` to see valid version hashes"],
+  LAVISH_NOT_FOUND: ["Run `npm install` in the docmanager-axi installation to install lavish-axi"],
   CANNOT_DELETE_LAST_VERSION: ["Run `docmanager untrack <id>` to stop tracking the whole document instead"],
   SAME_FAMILY: ["fromId and toId must be two different families"],
   NO_ROOT_VERSION: ["Run `docmanager families view <id>` to inspect the family first"],
@@ -98,8 +120,10 @@ const ERROR_SUGGESTIONS = {
   NO_PATHS: ["docmanager track <path>... [--as <syntheticPath>] [--relink]"],
   AS_REQUIRES_SINGLE_FILE: ["--as only works when tracking exactly one file, drop it for folders or multiple paths"],
   NOTHING_TO_PUSH: ["Run `docmanager track <path>` first"],
+  NOTHING_TO_CLEAN: ["Run `docmanager track <path>` first"],
   PUSH_REJECTED: ["Run `docmanager snapshot pull` first, then push again"],
   SYNC_CONFLICT: ["Resolve the conflict directly with git in ~/.docmanager/store, then pull again"],
+  PRIVACY_NOT_ACKNOWLEDGED: ["Run `docmanager snapshot push --acknowledge-privacy` to proceed"],
   SSH_AUTH_FAILED: ["Run `docmanager setup ssh` to check your SSH key setup for this remote"],
   CLONE_FAILED: ["Run `docmanager setup ssh` if this is an SSH remote, or check the URL and your network connection"],
   FETCH_FAILED: ["Run `docmanager setup ssh` if this is an SSH remote, or check the URL and your network connection"],
@@ -412,6 +436,94 @@ async function familiesCommand(args) {
     };
   }
 
+  if (sub === "export") {
+    const hash = args[2];
+    const { flags } = parseFlags(args.slice(3), ["to"]);
+    if (!id || !hash || !flags.to) {
+      throw new AxiError("id, hash, and --to <path> are all required", "VALIDATION_ERROR", [
+        "docmanager families export <id> <hash> --to <path>",
+        "Run `docmanager families view <id>` to see valid hashes",
+      ]);
+    }
+    let content;
+    try {
+      content = await coreClient.exportContent(hash);
+    } catch (err) {
+      throw toAxiError(err);
+    }
+    try {
+      writeFileSync(flags.to, content);
+    } catch (err) {
+      throw new AxiError(`Could not write to "${flags.to}": ${err.message}`, "VALIDATION_ERROR", [
+        "Check the destination directory exists and is writable",
+      ]);
+    }
+    return {
+      exported: flags.to,
+      hash,
+      help: [
+        `Edit ${flags.to}, then run \`docmanager track ${flags.to} --as <syntheticPath> --relink\` to capture the edit as a new version of this document`,
+      ],
+    };
+  }
+
+  if (sub === "lavish") {
+    const hash = args[2];
+    if (!id || !hash) {
+      throw new AxiError("id and hash are both required", "VALIDATION_ERROR", [
+        "docmanager families lavish <id> <hash>",
+        "Run `docmanager families view <id>` to see valid hashes",
+      ]);
+    }
+
+    let family, content;
+    try {
+      ({ family } = await coreClient.getFamily(id));
+      content = await coreClient.exportContent(hash);
+    } catch (err) {
+      throw toAxiError(err);
+    }
+
+    let lavishCliPath;
+    try {
+      lavishCliPath = resolveLavishCli();
+    } catch (err) {
+      throw new AxiError(err.message, err.code ?? "LAVISH_NOT_FOUND", [
+        "Run `npm install` in the docmanager-axi installation to install lavish-axi",
+      ]);
+    }
+
+    mkdirSync(editDir(), { recursive: true });
+    const filePath = join(editDir(), editFileName(family.syntheticPath, hash));
+    try {
+      writeFileSync(filePath, content);
+    } catch (err) {
+      throw new AxiError(`Could not write to "${filePath}": ${err.message}`, "VALIDATION_ERROR", []);
+    }
+
+    // Opens (or resumes) the review session and returns - the same quick,
+    // non-blocking shape `docmanager ui` already has. The actual review
+    // loop (`lavish-axi poll`) is a separate, long-running action the agent
+    // manages itself afterward; docmanager never runs or blocks on that.
+    try {
+      await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [lavishCliPath, filePath], { stdio: "inherit" });
+        child.on("error", reject);
+        child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`lavish-axi exited with code ${code}`))));
+      });
+    } catch (err) {
+      throw new AxiError(`Could not open lavish-axi: ${err.message}`, "VALIDATION_ERROR", []);
+    }
+
+    return {
+      opened: filePath,
+      help: [
+        `Run \`node ${lavishCliPath} poll ${filePath}\` and keep polling until the review session ends`,
+        `When it ends, run \`docmanager track ${filePath} --as ${family.syntheticPath} --relink\` then \`docmanager status\` to capture the edit as a new version`,
+      ],
+    };
+  }
+
   if (sub === "diff") {
     const hashA = args[2];
     const hashB = args[3];
@@ -445,6 +557,8 @@ async function familiesCommand(args) {
       "docmanager families delete-version <id> <hash>",
       "docmanager families rename <id> <newSyntheticPath>",
       'docmanager families tags <id> [--set "a,b"] [--add <tag>] [--remove <tag>]',
+      "docmanager families export <id> <hash> --to <path>",
+      "docmanager families lavish <id> <hash>",
     ]);
   }
 
@@ -551,8 +665,9 @@ async function snapshotCommand(args) {
   const [sub] = args;
 
   if (sub === "push") {
+    const { flags } = parseFlags(args.slice(1), ["acknowledge-privacy"], ["acknowledge-privacy"]);
     try {
-      await coreClient.pushSnapshot();
+      await coreClient.pushSnapshot(Boolean(flags["acknowledge-privacy"]));
     } catch (err) {
       throw toAxiError(err);
     }
@@ -716,6 +831,83 @@ async function doctorCommand() {
   return output;
 }
 
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Every version of every tracked document lives on as a git commit forever
+// (the append-only model) - nothing else ever compacts that history, so a
+// heavily-used store only grows over real long-term use. `git gc` already
+// solves this; it just has to actually be run sometimes. Deliberately never
+// automatic - an opt-in maintenance command, not background file-level work
+// on every push/pull.
+async function gcCommand() {
+  let result;
+  try {
+    result = await coreClient.runGc();
+  } catch (err) {
+    throw toAxiError(err);
+  }
+  const reclaimed = result.sizeBeforeBytes - result.sizeAfterBytes;
+  return {
+    gc: "complete",
+    sizeBefore: formatBytes(result.sizeBeforeBytes),
+    sizeAfter: formatBytes(result.sizeAfterBytes),
+    reclaimed: reclaimed > 0 ? formatBytes(reclaimed) : "0 B",
+  };
+}
+
+// The supported, safe alternative to a user manually running `rm -rf
+// ~/.docmanager` - this project's own real history includes exactly that
+// happening by hand once, with no better tool available at the time. This
+// is destructive and irreversible, the same class of action as installing
+// git or generating an SSH key: an agent must never invoke this on its own
+// initiative, even when it looks like the obvious fix for a tracking
+// mistake. It needs the user's own explicit, in-the-moment approval every
+// time - not a standing permission - which is why this refuses outright
+// without --confirm rather than a softer default.
+async function resetCommand(args) {
+  const { flags } = parseFlags(args, ["confirm"], ["confirm"]);
+  const home = docmanagerHome();
+
+  if (!flags.confirm) {
+    throw new AxiError(
+      `This permanently deletes ALL tracked document history and settings at ${home} - every version of every document, the whole snapshot-sync configuration, everything. This cannot be undone.`,
+      "VALIDATION_ERROR",
+      [
+        "Run `docmanager reset --confirm` to actually do this",
+        "This needs the user's own explicit, in-the-moment approval every time - an agent must never run this on its own initiative, even as an obvious-looking fix for a tracking mistake",
+      ],
+    );
+  }
+
+  const status = await coreStatus();
+  if (status.running) {
+    const { pid } = await stopCore();
+    // Deleting the store out from under a still-live process is unsafe on
+    // at least one real platform this project targets (an open file handle
+    // on Windows can make deletion fail outright, not just race) - wait for
+    // the actual exit rather than assuming SIGTERM already landed.
+    if (pid) await waitForProcessExit(pid, 5000);
+  }
+
+  try {
+    rmSync(home, { recursive: true, force: true });
+  } catch (err) {
+    throw new AxiError(`Could not remove ${home}: ${err.message}`, "VALIDATION_ERROR", [
+      "Check whether anything still has a file inside it open, or remove it by hand",
+    ]);
+  }
+
+  return {
+    reset: "complete",
+    removed: home,
+    help: ["The next `docmanager` command starts completely fresh, as if this were a brand-new machine"],
+  };
+}
+
 async function uiCommand() {
   const { port } = await ensureCoreRunning();
   const url = `http://127.0.0.1:${port}/`;
@@ -767,7 +959,9 @@ export async function main() {
       setup: setupCommand,
       ui: uiCommand,
       doctor: doctorCommand,
+      gc: gcCommand,
       search: searchCommand,
+      reset: resetCommand,
     },
   });
 }

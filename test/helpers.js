@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { closeIndexHandle } from "../src/core/index.js";
 
 // Every store/index/local-state module reads DOCMANAGER_HOME dynamically
 // (never cached at import time - see paths.js), so pointing it at a fresh
@@ -18,6 +19,10 @@ export function useIsolatedHome() {
 }
 
 export function cleanupHome(dir) {
+  // Unlinking an open file is silently fine on POSIX but a hard EBUSY on
+  // Windows - the cached SQLite handle (index.js's module-level dbHandle)
+  // stays open for the rest of this test file's process otherwise.
+  closeIndexHandle();
   delete process.env.DOCMANAGER_HOME;
   rmSync(dir, { recursive: true, force: true });
 }

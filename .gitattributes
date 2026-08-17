@@ -1,0 +1,8 @@
+# Force LF line endings on checkout regardless of the checking-out
+# machine's own core.autocrlf - without this, a Windows checkout's default
+# CRLF conversion makes committed text files byte-different from what any
+# in-memory-generated string comparison (e.g. build-skill.js --check)
+# expects, even though the actual content is identical. Confirmed for real:
+# this is exactly what broke `npm run build:skill:check` the first time CI
+# ever ran on windows-latest.
+* text=auto eol=lf

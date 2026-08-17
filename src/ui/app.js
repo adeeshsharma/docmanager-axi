@@ -38,6 +38,8 @@ const el = {
   renameButton: document.getElementById("rename-button"),
   openInTab: document.getElementById("open-in-tab"),
   downloadVersion: document.getElementById("download-version"),
+  lavishPromptButton: document.getElementById("lavish-prompt-button"),
+  lavishPromptStatus: document.getElementById("lavish-prompt-status"),
   untrackButton: document.getElementById("untrack-button"),
   revertButton: document.getElementById("revert-button"),
   openCompareButton: document.getElementById("open-compare-button"),
@@ -73,6 +75,7 @@ const el = {
   trackPaths: document.getElementById("track-paths"),
   trackRelink: document.getElementById("track-relink"),
   trackStatus: document.getElementById("track-status"),
+  trackCollisions: document.getElementById("track-collisions"),
 };
 
 async function api(method, path, body) {
@@ -715,6 +718,37 @@ el.renameButton.addEventListener("click", async () => {
   }
 });
 
+// A ready-to-paste message for whichever agent the user is talking to - not
+// something this UI can act on itself (the UI has no agent connection of
+// its own, see ARCHITECTURE.md section 5). Deliberately minimal: the full
+// workflow (why this order, why the exact printed command and not npx, the
+// relink+status step to save the result) already lives in docmanager's own
+// Agent Skill, loaded once and reused - repeating all of that in every
+// generated prompt would just be the same explanation paid for in tokens
+// on every single use. This only needs to supply what the skill can't
+// already know on its own: which specific version of which document.
+function buildLavishPrompt(family, hash) {
+  return `Edit version ${hash.slice(0, 8)} of "${family.syntheticPath}" (docmanager family ${family.id}) in Lavish Editor - run \`docmanager families lavish ${family.id} ${hash}\`, then follow docmanager's own skill for the rest of the workflow.`;
+}
+
+el.lavishPromptButton.addEventListener("click", async () => {
+  if (!state.detailFamily || !state.viewingHash) return;
+  const text = buildLavishPrompt(state.detailFamily, state.viewingHash);
+  try {
+    await navigator.clipboard.writeText(text);
+    el.lavishPromptStatus.textContent = "Copied - paste it to your agent.";
+  } catch {
+    // Clipboard access can fail (permissions, an unusual browser context) -
+    // fall back to something the user can still copy by hand rather than
+    // just failing silently.
+    window.prompt("Copy this and paste it to your agent:", text);
+    return;
+  }
+  setTimeout(() => {
+    el.lavishPromptStatus.textContent = "";
+  }, 4000);
+});
+
 el.untrackButton.addEventListener("click", async () => {
   if (!state.selectedId) return;
   const syntheticPath = el.detailTitle.textContent;
@@ -864,6 +898,63 @@ el.compareButton.addEventListener("click", async () => {
   }
 });
 
+// A colliding path gets its own small resolution card - showing the REAL
+// existing document it matched (title, version count, when it was last
+// touched) - rather than a blind checkbox the user has to trust upfront.
+// The batch checkbox above still exists for the "I already know I'm
+// reconnecting a whole snapshot-pulled folder, link everything" case; this
+// is for the everyday, one-collision-at-a-time case where the user didn't
+// (and shouldn't have needed to) predict the collision beforehand.
+function renderTrackCollisions(collisions) {
+  el.trackCollisions.innerHTML = collisions
+    .map((c, i) => {
+      const ef = c.existingFamily;
+      return `<div class="track-collision" data-index="${i}">
+        <p><strong>${escapeHtml(c.path)}</strong> already matches an existing document:</p>
+        <p class="track-collision-match">${escapeHtml(ef.syntheticPath)} · ${ef.versionCount} version${ef.versionCount === 1 ? "" : "s"} · last touched ${escapeHtml(formatDate(ef.headCreatedAt))}</p>
+        <div class="track-collision-actions">
+          <button type="button" class="secondary-button" data-action="link">Link this file to that history</button>
+          <button type="button" class="link-button" data-action="rename">Use a different name instead</button>
+        </div>
+        <span class="status-message" data-role="status"></span>
+      </div>`;
+    })
+    .join("");
+
+  el.trackCollisions.querySelectorAll(".track-collision").forEach((card, i) => {
+    const collision = collisions[i];
+    const statusEl = card.querySelector('[data-role="status"]');
+
+    card.querySelector('[data-action="link"]').addEventListener("click", async () => {
+      statusEl.textContent = "Linking…";
+      try {
+        await api("POST", "/documents/track", {
+          paths: [collision.path],
+          as: collision.existingFamily.syntheticPath,
+          relink: true,
+        });
+        card.remove();
+        refreshDocuments();
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    });
+
+    card.querySelector('[data-action="rename"]').addEventListener("click", async () => {
+      const newPath = window.prompt("Track this file under a different synthetic path:");
+      if (!newPath || !newPath.trim()) return;
+      statusEl.textContent = "Tracking…";
+      try {
+        await api("POST", "/documents/track", { paths: [collision.path], as: newPath.trim() });
+        card.remove();
+        refreshDocuments();
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    });
+  });
+}
+
 el.trackForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const paths = el.trackPaths.value
@@ -877,12 +968,18 @@ el.trackForm.addEventListener("submit", async (event) => {
   }
 
   el.trackStatus.textContent = "Tracking…";
+  el.trackCollisions.innerHTML = "";
   try {
-    const { summary } = await api("POST", "/documents/track", {
+    const { results, summary } = await api("POST", "/documents/track", {
       paths,
       relink: el.trackRelink.checked,
     });
     el.trackStatus.textContent = `${summary.trackedCount} tracked, ${summary.alreadyTrackedCount} already tracked, ${summary.relinkedCount} relinked, ${summary.errorCount} failed.`;
+
+    const collisions = results.filter((r) => r.code === "FAMILY_PATH_EXISTS" && r.existingFamily);
+    if (collisions.length > 0) {
+      renderTrackCollisions(collisions);
+    }
     if (summary.errorCount === 0) {
       el.trackPaths.value = "";
     }

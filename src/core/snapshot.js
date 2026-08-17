@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { docmanagerHome } from "./paths.js";
 import { storePath, withStoreLock } from "./store.js";
 import { runGit } from "./git.js";
-import { getSettings } from "./settings.js";
+import { getSettings, updateSettings } from "./settings.js";
 import { rebuildIndex } from "./index.js";
 
 function requireRemote() {
@@ -70,9 +70,30 @@ async function ensureRemoteConfigured(url) {
  * fully committed already (every store.js mutation commits immediately), so
  * this never needs to stage anything itself - just configure the remote and
  * push.
+ *
+ * The remote's own privacy and access control is entirely the user's
+ * responsibility - docmanager doesn't manage it, and once real document
+ * content leaves this machine there's no taking it back. Rather than only
+ * mentioning that in the Settings page copy, the first push that would
+ * actually leave this machine refuses until explicitly acknowledged
+ * (`acknowledgePrivacy: true`) - a one-time confirmation, not a prompt on
+ * every push, and never an interactive stdin prompt (the CLI's own
+ * no-interactive-prompts rule) - just a flag the caller has to pass once.
  */
-export async function pushSnapshot() {
+export async function pushSnapshot({ acknowledgePrivacy = false } = {}) {
   const url = requireRemote();
+
+  if (!getSettings().snapshotPrivacyAcknowledged) {
+    if (!acknowledgePrivacy) {
+      const err = new Error(
+        `This will push your tracked document content to "${url}". That remote's privacy and access control is entirely your own responsibility - docmanager never manages or restricts who can see it, and content already pushed there stays there until you remove it yourself. Run \`docmanager snapshot push --acknowledge-privacy\` to proceed - this only needs to be confirmed once, ever.`,
+      );
+      err.code = "PRIVACY_NOT_ACKNOWLEDGED";
+      throw err;
+    }
+    updateSettings({ snapshotPrivacyAcknowledged: true });
+  }
+
   return withStoreLock(async () => {
     if (!existsSync(storePath())) {
       const err = new Error("Nothing to push yet - track a document first.");
@@ -111,6 +132,19 @@ export async function pullSnapshot() {
       } catch (err) {
         translateNetworkError(err, "CLONE_FAILED", `Could not clone the configured remote (${url}).`);
       }
+      // Clone follows the remote's own HEAD symref, which for a bare repo
+      // created without an explicit initial-branch override resolves to
+      // whatever that git install's init.defaultBranch happens to be -
+      // often still "master", not "main", the one branch name this project
+      // pins everywhere else (store.js's own `git init -b main`). If the
+      // remote's HEAD points at a branch that was never actually pushed
+      // (the common real case: only "main" was ever pushed to a fresh
+      // remote), newer git versions leave the clone with a real
+      // `origin/main` remote-tracking ref but NO local branch checked out
+      // at all - every family/content file appears to not exist, since
+      // nothing is checked out. Force the local branch explicitly rather
+      // than trust clone's own HEAD-following selection.
+      await runGit(storePath(), ["checkout", "-B", "main", "origin/main"]);
       rebuildIndex();
       return { pulled: true, mode: "clone" };
     }

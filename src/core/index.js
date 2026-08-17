@@ -49,6 +49,18 @@ function closeHandle() {
   }
 }
 
+// Exported for test cleanup only - real callers never need this directly,
+// since rebuildIndex() already closes the cached handle itself before
+// replacing the file. A test process that opened the index and then wants
+// to delete the whole DOCMANAGER_HOME directory (most test cleanup) needs
+// this explicitly: unlinking an open file is silently fine on POSIX but a
+// hard EBUSY on Windows, since the cached handle is a module-level
+// singleton that otherwise stays open for the rest of that test file's
+// process - confirmed for real on windows-latest CI, invisible on POSIX.
+export function closeIndexHandle() {
+  closeHandle();
+}
+
 /**
  * Rebuilds the local SQLite index from the store's JSON metadata (the
  * synced source of truth). Writes to a temp file and renames it into place,

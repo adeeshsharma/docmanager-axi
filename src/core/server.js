@@ -10,6 +10,7 @@ import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex, searchFamilies
 import { reconcile } from "./reconcile.js";
 import { suggestLinks } from "./suggest.js";
 import { runDoctor } from "./doctor.js";
+import { runGc } from "./maintenance.js";
 import { checkSshSetup } from "./ssh-check.js";
 import { getSettings, updateSettings } from "./settings.js";
 import { subscribe, unsubscribe, broadcast } from "./events.js";
@@ -39,6 +40,8 @@ const CLIENT_ERROR_CODES = new Set([
   "NO_PATHS",
   "AS_REQUIRES_SINGLE_FILE",
   "BAD_REQUEST",
+  "PRIVACY_NOT_ACKNOWLEDGED",
+  "NOTHING_TO_CLEAN",
 ]);
 
 function statusForError(err) {
@@ -262,6 +265,11 @@ const ROUTES = [
     handler: async () => ({ status: 200, body: await runDoctor() }),
   },
   {
+    method: "POST",
+    pattern: /^\/maintenance\/gc$/,
+    handler: async () => ({ status: 200, body: await runGc() }),
+  },
+  {
     method: "GET",
     pattern: /^\/ssh-check$/,
     handler: async () => ({ status: 200, body: checkSshSetup() }),
@@ -287,7 +295,10 @@ const ROUTES = [
   {
     method: "POST",
     pattern: /^\/snapshot\/push$/,
-    handler: async () => ({ status: 200, body: await pushSnapshot() }),
+    handler: async (req) => {
+      const body = await readJsonBody(req);
+      return { status: 200, body: await pushSnapshot({ acknowledgePrivacy: Boolean(body.acknowledgePrivacy) }) };
+    },
   },
   {
     method: "POST",
@@ -358,12 +369,12 @@ const CONTENT_HASH_PATTERN = /^[0-9a-f]{64}$/;
 // reading pane's iframe to load, not a JSON body.
 function handleContent(hash, res) {
   if (!CONTENT_HASH_PATTERN.test(hash)) {
-    sendJson(res, 400, { error: "invalid content hash" });
+    sendJson(res, 400, { error: "invalid content hash", code: "INVALID_CONTENT_HASH" });
     return;
   }
   const content = readContent(hash);
   if (!content) {
-    sendJson(res, 404, { error: `No content for hash "${hash}"` });
+    sendJson(res, 404, { error: `No content for hash "${hash}"`, code: "CONTENT_NOT_FOUND" });
     return;
   }
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });

@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { docmanagerHome, lockFilePath, logFilePath } from "./paths.js";
 import { SERVICE_NAME } from "./server.js";
 import { VERSION } from "../version.js";
+import { rotateLogIfNeeded } from "./log-rotation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DAEMON_SCRIPT = join(__dirname, "daemon.js");
@@ -91,7 +92,7 @@ async function checkHealth(port) {
   }
 }
 
-async function waitForProcessExit(pid, timeoutMs) {
+export async function waitForProcessExit(pid, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!isProcessAlive(pid)) return true;
@@ -124,6 +125,7 @@ function isStartingPlaceholderFresh(lock) {
 }
 
 function spawnDaemon(preferredPort) {
+  rotateLogIfNeeded();
   const logFd = openSync(logFilePath(), "a");
   const child = spawn(process.execPath, [DAEMON_SCRIPT, String(preferredPort)], {
     detached: true,
