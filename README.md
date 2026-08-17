@@ -80,7 +80,7 @@ npx docmanager-axi <command>
 
 ## Prerequisites
 
-- Node.js 20 or later.
+- Node.js 22 or later (`better-sqlite3` and `lavish-axi` both require it).
 - `git`, already installed and on `PATH`. The content store is a real git repository under the hood; this is not optional.
 
 If `git` is missing, `docmanager` fails with a clear, structured error instead of a raw stack trace. If an agent is setting this up on a user's behalf, it should say `git` is missing and ask before running any install command - never install it silently. This exact rule is baked into the Agent Skill above.

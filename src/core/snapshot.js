@@ -132,6 +132,19 @@ export async function pullSnapshot() {
       } catch (err) {
         translateNetworkError(err, "CLONE_FAILED", `Could not clone the configured remote (${url}).`);
       }
+      // Clone follows the remote's own HEAD symref, which for a bare repo
+      // created without an explicit initial-branch override resolves to
+      // whatever that git install's init.defaultBranch happens to be -
+      // often still "master", not "main", the one branch name this project
+      // pins everywhere else (store.js's own `git init -b main`). If the
+      // remote's HEAD points at a branch that was never actually pushed
+      // (the common real case: only "main" was ever pushed to a fresh
+      // remote), newer git versions leave the clone with a real
+      // `origin/main` remote-tracking ref but NO local branch checked out
+      // at all - every family/content file appears to not exist, since
+      // nothing is checked out. Force the local branch explicitly rather
+      // than trust clone's own HEAD-following selection.
+      await runGit(storePath(), ["checkout", "-B", "main", "origin/main"]);
       rebuildIndex();
       return { pulled: true, mode: "clone" };
     }
