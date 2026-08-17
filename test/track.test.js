@@ -49,7 +49,7 @@ test("trackPaths on a folder skips vendor/build directories, tracks only real do
 
   assert.equal(summary.trackedCount, 1);
   const tracked = results.find((r) => r.status === "tracked");
-  assert.match(tracked.path, /notes\/doc\.html$/);
+  assert.ok(tracked.path.endsWith(join("notes", "doc.html")), `expected a real filesystem path ending in notes/doc.html, got ${tracked.path}`);
 });
 
 test("trackPaths derives folder-relative synthetic paths, avoiding collisions on same-named files", async () => {
