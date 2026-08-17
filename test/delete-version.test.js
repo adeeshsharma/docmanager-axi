@@ -85,7 +85,7 @@ test("errors with FAMILY_NOT_FOUND for an unknown family", async () => {
   await assert.rejects(deleteVersion("nonexistent-id", "anyhash"), (err) => err.code === "FAMILY_NOT_FOUND");
 });
 
-test("after deleting the head, a live file still holding that exact content is re-captured on the next reconcile, not silently lost", async () => {
+test("refuses to delete a version whose exact content a live tracked file still holds - it would just be re-captured on the next reconcile", async () => {
   const fixtureDir = mkdtempSync(join(tmpdir(), "docmanager-delver-fixture-"));
   try {
     const filePath = join(fixtureDir, "report.html");
@@ -99,17 +99,25 @@ test("after deleting the head, a live file still holding that exact content is r
     const v2 = afterV2.headVersion;
     assert.notEqual(v2, v1);
 
-    await deleteVersion(family.id, v2);
-    const afterDelete = getFamily(family.id);
-    assert.equal(afterDelete.headVersion, v1);
+    // The real file on disk still holds v2's exact bytes - deleteVersion
+    // itself never touches the live file (same disk-boundary reasoning
+    // already established for revert). Letting the delete through here
+    // would silently resurrect v2 on the very next reconcile - a real bug
+    // once found in practice (a Lavish-editing-session version, deleted,
+    // came right back). Refusing up front is the fix, not the old
+    // "silently re-capture it, not silently lost" behavior this test used
+    // to assert.
+    await assert.rejects(deleteVersion(family.id, v2), (err) => err.code === "VERSION_STILL_LIVE");
+    const afterAttempt = getFamily(family.id);
+    assert.equal(afterAttempt.headVersion, v2, "the refused delete must leave the family completely untouched");
+    assert.equal(Object.keys(afterAttempt.versions).length, 2);
 
-    // The real file on disk still holds v2's exact bytes - untouched by
-    // deleteVersion, per the same disk-boundary revert already established.
-    const results = await reconcile();
-    const afterReconcile = getFamily(family.id);
-    assert.equal(results[0].status, "new-version-captured");
-    assert.equal(Object.keys(afterReconcile.versions).length, 2);
-    assert.notEqual(afterReconcile.headVersion, v1, "the live file's content was correctly re-captured, not lost");
+    // Editing the live file so it genuinely differs clears the way to delete.
+    writeFileSync(filePath, "<html><body>v3, genuinely different</body></html>");
+    await reconcile();
+    const afterEdit = getFamily(family.id);
+    const updated = await deleteVersion(afterEdit.familyId ?? family.id, v2);
+    assert.equal(updated.versions[v2], undefined, "v2 deletes cleanly once the live file no longer matches it");
   } finally {
     rmSync(fixtureDir, { recursive: true, force: true });
   }

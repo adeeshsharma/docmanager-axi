@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { docmanagerHome } from "./paths.js";
 import { runGit } from "./git.js";
+import { listMappings } from "./local-state.js";
+import { isSameNormalizedHtml } from "./html-normalize.js";
 
 export function storePath() {
   return join(docmanagerHome(), "store");
@@ -376,6 +378,28 @@ export async function deleteVersion(familyId, hash) {
       );
       err.code = "CANNOT_DELETE_LAST_VERSION";
       throw err;
+    }
+
+    // Deleting a version whose content a live, tracked file still actually
+    // contains would be self-defeating: the next reconcile() (any
+    // subsequent CLI/UI read) compares that file against the family's new
+    // head, finds a difference, looks up its hash in family.versions to see
+    // if it's just an already-known older version - and finds nothing,
+    // since this delete just removed that lookup entry - so it silently
+    // re-captures the exact content just deleted as a brand new version.
+    // Refuse up front with an actionable next step instead of letting the
+    // user discover this only after the fact - a real bug found this way,
+    // not a hypothetical (see techContext.md).
+    for (const mapping of listMappings()) {
+      if (mapping.familyId !== familyId || !existsSync(mapping.realPath)) continue;
+      const liveBytes = readFileSync(mapping.realPath);
+      if (isSameNormalizedHtml(liveBytes, readContent(hash))) {
+        const err = new Error(
+          `Cannot delete this version - the file at "${mapping.realPath}" still has this exact content. Deleting it now would just be re-captured as a new version the next time anything reconciles. Edit or untrack that file first, then delete this version.`,
+        );
+        err.code = "VERSION_STILL_LIVE";
+        throw err;
+      }
     }
 
     const parentHash = target.supersedes;
