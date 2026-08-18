@@ -56,18 +56,7 @@ Works for Claude Code, Codex, or OpenCode (whichever is present). The skill and 
 
 ## Install the CLI
 
-### From source (current - not yet published to npm)
-
-```sh
-git clone git@github.com:adeeshsharma/docmanager-axi.git
-cd docmanager-axi
-npm install
-npm link          # puts `docmanager` on PATH, backed by this checkout
-```
-
-`npm link` gives the same `docmanager <command>` experience the eventual `npm install -g docmanager-axi` will, just pointed at your local checkout instead of the registry. Prefer not to touch global npm links? Run everything as `node bin/docmanager.js <command>` from inside the checkout instead - identical behavior.
-
-### Once published to npm (not yet available)
+### From npm
 
 ```sh
 npm install -g docmanager-axi
@@ -77,6 +66,17 @@ npm install -g docmanager-axi
 # or, without a global install:
 npx docmanager-axi <command>
 ```
+
+### From source (for development on docmanager-axi itself)
+
+```sh
+git clone git@github.com:adeeshsharma/docmanager-axi.git
+cd docmanager-axi
+npm install
+npm link          # puts `docmanager` on PATH, backed by this checkout
+```
+
+`npm link` gives the same `docmanager <command>` experience the npm-installed version does, just pointed at your local checkout instead of the registry. Prefer not to touch global npm links? Run everything as `node bin/docmanager.js <command>` from inside the checkout instead - identical behavior.
 
 ## Prerequisites
 
@@ -174,7 +174,7 @@ node bin/docmanager.js --help
 
 No bundler, no framework for the CLI, core, or UI - all plain Node/HTML/CSS/JS, to keep the published package small. `npm test` uses `DOCMANAGER_HOME`/`DOCMANAGER_PORT` overrides internally to fully isolate itself from any real, already-running core on the same machine - safe to run alongside normal use. CI runs the same suite, `npm run build:skill:check` (fails if the committed Agent Skill has drifted from its source), `npm run build`, and `npm pack --dry-run` on macOS, Windows, and Ubuntu.
 
-See [CHANGELOG.md](./CHANGELOG.md) for what's changed, and [RELEASING.md](./RELEASING.md) for the release checklist.
+See [CHANGELOG.md](./CHANGELOG.md) for what's changed, [RELEASING.md](./RELEASING.md) for the release checklist, and [CONTRIBUTING.md](./CONTRIBUTING.md) for this project's current contribution policy.
 
 ## License
 
