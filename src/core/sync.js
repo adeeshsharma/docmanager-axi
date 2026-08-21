@@ -97,7 +97,10 @@ async function fetchAndResolveCaseA(url, { dryRun }) {
       // that by default ("refusing to merge unrelated histories"); this is
       // exactly the expected shape for Case B, not an error condition.
       await runGit(storePath(), ["merge", "origin/main", "--no-commit", "--allow-unrelated-histories"]);
-    } catch {
+    } catch (mergeErr) {
+      // TEMPORARY - diagnosing a CI-only failure (passes on macOS, fails on
+      // Ubuntu/Windows in GitHub Actions) that can't be reproduced locally.
+      console.error("DEBUG_SYNC_MERGE_ERROR:", mergeErr && mergeErr.message);
       mergeInProgress = true;
       const conflicts = await parseConflictedPaths();
 
