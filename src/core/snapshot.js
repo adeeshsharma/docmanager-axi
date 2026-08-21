@@ -5,7 +5,7 @@ import { runGit } from "./git.js";
 import { getSettings, updateSettings } from "./settings.js";
 import { rebuildIndex } from "./index.js";
 
-function requireRemote() {
+export function requireRemote() {
   const settings = getSettings();
   if (!settings.snapshotRemote) {
     const err = new Error(
@@ -115,46 +115,71 @@ export async function pushSnapshot({ acknowledgePrivacy = false } = {}) {
 }
 
 /**
+ * Clones the configured remote fresh into a machine with no local store yet.
+ * Extracted out of pullSnapshot() so sync.js's syncSnapshot() can reuse the
+ * exact same clone-on-a-fresh-machine behavior without duplicating it -
+ * callers are responsible for calling this from inside withStoreLock() and
+ * for having already confirmed the store doesn't exist yet.
+ */
+export async function cloneFresh(url) {
+  mkdirSync(docmanagerHome(), { recursive: true, mode: 0o700 });
+  try {
+    await runGit(docmanagerHome(), [...authArgs(url), "clone", url, "store"]);
+  } catch (err) {
+    translateNetworkError(err, "CLONE_FAILED", `Could not clone the configured remote (${url}).`);
+  }
+  // Clone follows the remote's own HEAD symref, which for a bare repo
+  // created without an explicit initial-branch override resolves to
+  // whatever that git install's init.defaultBranch happens to be - often
+  // still "master", not "main", the one branch name this project pins
+  // everywhere else (store.js's own `git init -b main`). If the remote's
+  // HEAD points at a branch that was never actually pushed (the common
+  // real case: only "main" was ever pushed to a fresh remote), newer git
+  // versions leave the clone with a real `origin/main` remote-tracking ref
+  // but NO local branch checked out at all - every family/content file
+  // appears to not exist, since nothing is checked out. Force the local
+  // branch explicitly rather than trust clone's own HEAD-following
+  // selection.
+  await runGit(storePath(), ["checkout", "-B", "main", "origin/main"]);
+  rebuildIndex();
+  return { pulled: true, mode: "clone" };
+}
+
+/**
+ * Fetches the configured remote's main branch into an already-existing
+ * local store, without merging anything - just brings origin/main up to
+ * date so callers (pullSnapshot's plain merge, sync.js's semantic merge)
+ * can decide what to do with it. Extracted so both go through the exact
+ * same remote-configuration and auth/network-error handling.
+ */
+export async function fetchOrigin(url) {
+  await ensureRemoteConfigured(url);
+  try {
+    await runGit(storePath(), [...authArgs(url), "fetch", "origin", "main"]);
+  } catch (err) {
+    translateNetworkError(err, "FETCH_FAILED", `Could not fetch the configured remote (${url}).`);
+  }
+}
+
+/**
  * Pulls the configured remote. On a machine with no local store yet, this
  * clones fresh rather than assuming a repo already exists. On a machine
  * that already has one, it's a real fetch + merge - never a force-overwrite
  * - so unpushed local changes are never discarded. A genuine same-family
  * conflict aborts the merge cleanly (local store stays exactly as it was
  * before the pull) and reports it, rather than attempting to auto-resolve.
+ * See sync.js's syncSnapshot() for a semantic-merge alternative that
+ * resolves the two most common divergence shapes automatically instead of
+ * always falling back to this raw conflict-and-abort behavior.
  */
 export async function pullSnapshot() {
   const url = requireRemote();
   return withStoreLock(async () => {
     if (!existsSync(storePath())) {
-      mkdirSync(docmanagerHome(), { recursive: true, mode: 0o700 });
-      try {
-        await runGit(docmanagerHome(), [...authArgs(url), "clone", url, "store"]);
-      } catch (err) {
-        translateNetworkError(err, "CLONE_FAILED", `Could not clone the configured remote (${url}).`);
-      }
-      // Clone follows the remote's own HEAD symref, which for a bare repo
-      // created without an explicit initial-branch override resolves to
-      // whatever that git install's init.defaultBranch happens to be -
-      // often still "master", not "main", the one branch name this project
-      // pins everywhere else (store.js's own `git init -b main`). If the
-      // remote's HEAD points at a branch that was never actually pushed
-      // (the common real case: only "main" was ever pushed to a fresh
-      // remote), newer git versions leave the clone with a real
-      // `origin/main` remote-tracking ref but NO local branch checked out
-      // at all - every family/content file appears to not exist, since
-      // nothing is checked out. Force the local branch explicitly rather
-      // than trust clone's own HEAD-following selection.
-      await runGit(storePath(), ["checkout", "-B", "main", "origin/main"]);
-      rebuildIndex();
-      return { pulled: true, mode: "clone" };
+      return cloneFresh(url);
     }
 
-    await ensureRemoteConfigured(url);
-    try {
-      await runGit(storePath(), [...authArgs(url), "fetch", "origin", "main"]);
-    } catch (err) {
-      translateNetworkError(err, "FETCH_FAILED", `Could not fetch the configured remote (${url}).`);
-    }
+    await fetchOrigin(url);
     try {
       await runGit(storePath(), ["merge", "origin/main", "--no-edit"]);
     } catch {

@@ -73,7 +73,9 @@ const el = {
   settingsStatus: document.getElementById("settings-status"),
   trackForm: document.getElementById("track-form"),
   trackPaths: document.getElementById("track-paths"),
+  trackPreview: document.getElementById("track-preview"),
   trackRelink: document.getElementById("track-relink"),
+  trackRelinkReason: document.getElementById("track-relink-reason"),
   trackStatus: document.getElementById("track-status"),
   trackCollisions: document.getElementById("track-collisions"),
 };
@@ -137,9 +139,10 @@ function renderSearchResults() {
 
   const items = state.searchResults
     .map((r) => {
-      const selected = r.id === state.selectedId ? " selected" : "";
+      const isSelected = r.id === state.selectedId;
+      const selected = isSelected ? " selected" : "";
       const checked = state.bulkSelectedIds.has(r.id) ? " checked" : "";
-      return `<li class="${selected.trim()}" data-id="${r.id}">
+      return `<li class="${selected.trim()}" data-id="${r.id}" role="button" tabindex="0" aria-current="${isSelected}">
         <input type="checkbox" class="family-select" data-id="${r.id}"${checked} aria-label="Select for bulk actions" />
         ${DOC_ICON}
         <div class="item-text">
@@ -169,7 +172,8 @@ function renderFamilyList() {
 
   const items = state.families
     .map((family) => {
-      const selected = family.id === state.selectedId ? " selected" : "";
+      const isSelected = family.id === state.selectedId;
+      const selected = isSelected ? " selected" : "";
       const checked = state.bulkSelectedIds.has(family.id) ? " checked" : "";
       const otherPaths = duplicates.get(family.id);
       const dupBadge = otherPaths
@@ -178,7 +182,7 @@ function renderFamilyList() {
       const tagBadges = (family.tags ?? [])
         .map((t) => `<span class="tag-chip tag-chip-small">${escapeHtml(t)}</span>`)
         .join("");
-      return `<li class="${selected.trim()}" data-id="${family.id}">
+      return `<li class="${selected.trim()}" data-id="${family.id}" role="button" tabindex="0" aria-current="${isSelected}">
         <input type="checkbox" class="family-select" data-id="${family.id}"${checked} aria-label="Select for bulk actions" />
         ${DOC_ICON}
         <div class="item-text">
@@ -193,9 +197,26 @@ function renderFamilyList() {
   wireFamilyListItems();
 }
 
+// Activates a row on Enter/Space the same way a real <button> would,
+// without swallowing every other key (Tab, arrows) so normal keyboard
+// scrolling/focus movement through the list keeps working unchanged.
+// Ignores the event when it bubbled up from a real nested control (e.g. the
+// timeline's own per-chip delete <button>) - keydown bubbles even though
+// that button's own click handler calls stopPropagation(), so without this
+// guard, deleting a version with the keyboard would also wrongly select it.
+function onActivateKeydown(handler) {
+  return (event) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    handler();
+  };
+}
+
 function wireFamilyListItems() {
   for (const li of el.familyList.querySelectorAll("li")) {
     li.addEventListener("click", () => selectFamily(li.dataset.id));
+    li.addEventListener("keydown", onActivateKeydown(() => selectFamily(li.dataset.id)));
   }
   for (const checkbox of el.familyList.querySelectorAll(".family-select")) {
     checkbox.addEventListener("click", (event) => event.stopPropagation());
@@ -323,7 +344,7 @@ function renderTimeline(family) {
       const deleteButton = canDelete
         ? `<button type="button" class="version-delete" data-hash="${v.hash}" data-current="${isCurrent}" title="Delete this version" aria-label="Delete this version">${DELETE_ICON}</button>`
         : "";
-      return `<li class="${classes}" data-hash="${v.hash}" title="${escapeHtml(title)}">
+      return `<li class="${classes}" data-hash="${v.hash}" title="${escapeHtml(title)}" role="button" tabindex="0" aria-current="${isViewing}">
         <span class="dot"></span>${escapeHtml(formatDate(v.createdAt))}${deleteButton}
       </li>`;
     })
@@ -331,6 +352,7 @@ function renderTimeline(family) {
 
   for (const li of el.timeline.querySelectorAll("li")) {
     li.addEventListener("click", () => viewVersion(li.dataset.hash));
+    li.addEventListener("keydown", onActivateKeydown(() => viewVersion(li.dataset.hash)));
   }
   for (const btn of el.timeline.querySelectorAll(".version-delete")) {
     btn.addEventListener("click", (event) => {
@@ -898,6 +920,70 @@ el.compareButton.addEventListener("click", async () => {
   }
 });
 
+// Mirrors trackPath()'s own defaultSyntheticPath() (src/core/track.js) just
+// closely enough for a client-side preview - basename, extension stripped,
+// leading slash. Only meaningful for a single-file line; a folder path
+// can't be previewed without walking the real filesystem, which the
+// browser has no access to, so a folder line always shows as "new" here
+// even though tracking it for real may expand into several files.
+function clientDefaultSyntheticPath(rawPath) {
+  const normalized = rawPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const base = normalized.split("/").pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  const name = dot > 0 ? base.slice(0, dot) : base;
+  return `/${name}`;
+}
+
+// Turns a blind batch submission into an inspectable one: for each pasted
+// line, shows whether it will create a new document or reconnect to one
+// that already exists, before the Track button is ever pressed. The
+// checkbox only ever does something when at least one line actually
+// matches - disabled with a plain reason otherwise, rather than sitting
+// there identically whether it's useful or not.
+function updateTrackPreview() {
+  const lines = el.trackPaths.value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    el.trackPreview.innerHTML = "";
+    el.trackRelink.disabled = false;
+    el.trackRelinkReason.hidden = true;
+    return;
+  }
+
+  let anyMatch = false;
+  el.trackPreview.innerHTML = lines
+    .map((line) => {
+      const synthetic = clientDefaultSyntheticPath(line);
+      const match = state.families.find((f) => f.syntheticPath === synthetic);
+      if (match) {
+        anyMatch = true;
+        const count = match.versionCount ?? Object.keys(match.versions ?? {}).length;
+        return `<div class="track-preview-row match">${escapeHtml(line)} → Reconnects to: "${escapeHtml(match.syntheticPath)}" (${count} version${count === 1 ? "" : "s"})</div>`;
+      }
+      return `<div class="track-preview-row">${escapeHtml(line)} → New document</div>`;
+    })
+    .join("");
+
+  el.trackRelink.disabled = !anyMatch;
+  el.trackRelinkReason.hidden = anyMatch;
+  if (!anyMatch) el.trackRelink.checked = false;
+}
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+const debouncedUpdateTrackPreview = debounce(updateTrackPreview, 200);
+el.trackPaths.addEventListener("input", debouncedUpdateTrackPreview);
+el.trackPaths.addEventListener("blur", updateTrackPreview);
+
 // A colliding path gets its own small resolution card - showing the REAL
 // existing document it matched (title, version count, when it was last
 // touched) - rather than a blind checkbox the user has to trust upfront.
@@ -916,7 +1002,7 @@ function renderTrackCollisions(collisions) {
           <button type="button" class="secondary-button" data-action="link">Link this file to that history</button>
           <button type="button" class="link-button" data-action="rename">Use a different name instead</button>
         </div>
-        <span class="status-message" data-role="status"></span>
+        <span class="status-message" data-role="status" role="status"></span>
       </div>`;
     })
     .join("");
@@ -982,6 +1068,7 @@ el.trackForm.addEventListener("submit", async (event) => {
     }
     if (summary.errorCount === 0) {
       el.trackPaths.value = "";
+      updateTrackPreview();
     }
     refreshDocuments();
   } catch (err) {

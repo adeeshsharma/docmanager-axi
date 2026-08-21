@@ -51,6 +51,13 @@ Usage:
                                        until --acknowledge-privacy confirms you understand the remote's own
                                        privacy is your responsibility - one-time, never asked again after
   docmanager snapshot pull            Pull the snapshot remote (clones fresh on a new machine)
+  docmanager sync [--dry-run] [--no-auto-link]
+                                       Pull and auto-resolve the two common divergence shapes (same family
+                                       edited on both sides; two machines that independently tracked the same
+                                       path) instead of always stopping at a raw git conflict. Prefer this
+                                       over snapshot pull whenever more than one machine may be involved.
+                                       --dry-run reports what would happen without changing anything.
+                                       --no-auto-link still reports a path collision but never links it
   docmanager ui                       Open the local web UI
   docmanager setup hooks              Install session-start ambient context for your agent
   docmanager setup ssh                Check whether SSH auth actually works for an SSH-style snapshot
@@ -694,6 +701,45 @@ async function snapshotCommand(args) {
   ]);
 }
 
+function formatSyncEntry(m) {
+  return `${m.syntheticPath}: ${m.localVersionCount} local + ${m.remoteVersionCount} remote version(s) -> ${m.mergedVersionCount} total, head now ${m.headVersion.slice(0, 8)}...`;
+}
+
+async function syncCommand(args) {
+  const { flags } = parseFlags(args, ["dry-run", "no-auto-link"], ["dry-run", "no-auto-link"]);
+  const dryRun = Boolean(flags["dry-run"]);
+  const autoLink = !flags["no-auto-link"];
+
+  let result;
+  try {
+    result = await coreClient.syncSnapshot(dryRun, autoLink);
+  } catch (err) {
+    throw toAxiError(err);
+  }
+
+  if (result.mode === "clone" || result.mode === "would-clone") {
+    return {
+      sync: dryRun ? "would clone fresh" : "cloned fresh",
+      help: ["Run `docmanager families` to see what's now tracked"],
+    };
+  }
+
+  const lines = [
+    ...result.semanticMerges.map((m) => `merged (semantic): ${formatSyncEntry(m)}`),
+    ...result.autoLinks.map(
+      (a) =>
+        `auto-linked (exact path collision, disjoint history): ${a.syntheticPath}\n  older: ${a.olderId.slice(0, 8)}... (${a.olderVersionCount} version(s)) -> superseded by\n  newer: ${a.newerId.slice(0, 8)}... (${a.newerVersionCount} version(s))`,
+    ),
+    ...result.unresolved.map((u) => `unresolved: ${u.syntheticPath ?? u.ids?.join(", ")} - ${u.reason}${u.command ? ` (${u.command})` : ""}`),
+  ];
+
+  return {
+    sync: dryRun ? "dry run" : "synced",
+    summary: `${result.semanticMerges.length} family semantically merged, ${result.autoLinks.length} family auto-linked, ${result.unresolved.length} need your input`,
+    detail: lines.length > 0 ? lines : ["nothing to reconcile"],
+  };
+}
+
 // Never suggests docmanager itself generate a key - that's a real,
 // system-level change (the same class of action as installing git,
 // ARCHITECTURE.md section 3.2), and always needs the user's own explicit,
@@ -957,6 +1003,7 @@ export async function main() {
       status: statusCommand,
       settings: settingsCommand,
       snapshot: snapshotCommand,
+      sync: syncCommand,
       setup: setupCommand,
       ui: uiCommand,
       doctor: doctorCommand,

@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>docmanager</title>
 <script>(function(){try{var t=localStorage.getItem("docmanager-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<!-- Actually loads Inter instead of just naming it as an unloaded fallback
+     in style.css's font stack. Falls back to the existing system-font stack
+     automatically if this machine has no internet access - never blocks
+     rendering (display=swap), never breaks the app either way. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -16,8 +23,14 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M14 3v5h5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-      <span>docmanager</span>
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="15" height="15">
+          <rect x="4.5" y="15" width="15" height="4.4" rx="2.2" fill="currentColor" opacity="0.32"/>
+          <rect x="5.5" y="10" width="13" height="4.4" rx="2.2" fill="currentColor" opacity="0.62"/>
+          <rect x="7" y="5" width="10" height="4.4" rx="2.2" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="brand-word">doc<span class="brand-word-accent">manager</span></span>
     </div>
 
     <nav class="sidebar-nav">
@@ -55,12 +68,15 @@
       <form id="track-form">
         <label for="track-paths">Paths, one per line (files or folders)</label>
         <textarea id="track-paths" rows="3" placeholder="/Users/you/Documents/report.html&#10;/Users/you/Documents/old-reports/"></textarea>
+        <div id="track-preview" class="track-preview"></div>
         <label class="checkbox-label">
           <input type="checkbox" id="track-relink" />
-          Link every match to its existing history automatically (for reconnecting a whole batch at once, e.g. after a snapshot pull)
+          Reconnect to matching history instead of creating new
         </label>
+        <p id="track-relink-help" class="field-help">Turn this on only right after a snapshot pull, when you're re-pointing this machine's files at history that already exists. Leave it off when tracking a file for the first time - a name that happens to match could otherwise attach your file to the wrong document's history.</p>
+        <p id="track-relink-reason" class="field-help" hidden>No existing history matches these names - nothing to reconnect to.</p>
         <button type="submit">Track</button>
-        <span id="track-status" class="status-message"></span>
+        <span id="track-status" class="status-message" role="status"></span>
         <div id="track-collisions" class="track-collisions"></div>
       </form>
     </details>
@@ -134,11 +150,11 @@
             <input id="snapshot-remote-token" type="password" placeholder="Not set" autocomplete="off" />
             <div class="token-actions">
               <button type="button" id="clear-token-button" class="link-button" hidden>Clear saved token</button>
-              <span id="token-status" class="status-message"></span>
+              <span id="token-status" class="status-message" role="status"></span>
             </div>
 
             <button type="submit">Save</button>
-            <span id="settings-status" class="status-message"></span>
+            <span id="settings-status" class="status-message" role="status"></span>
           </form>
 
           <div class="info-block">
@@ -162,7 +178,7 @@
             <h3>Background service</h3>
             <p>docmanager stops itself automatically after a long period of no activity, so it's fine to just leave it running. To stop it right now instead, for example before shutting down your machine, use the button below. The next time you or an agent runs any <code>docmanager</code> command, it starts itself again automatically.</p>
             <button id="stop-core-button" type="button" class="danger-button">Stop docmanager</button>
-            <span id="stop-core-status" class="status-message"></span>
+            <span id="stop-core-status" class="status-message" role="status"></span>
           </div>
         </div>
 

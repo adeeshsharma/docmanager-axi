@@ -1,36 +1,56 @@
 :root {
   color-scheme: light dark;
 
-  --accent: #6d5ef0;
-  --accent-strong: #5b4dd6;
-  --accent-tint: rgba(109, 94, 240, 0.12);
-  --accent-text: #ffffff;
+  /* Signal Blue - a graphite-neutral, single-accent system chosen after
+     three rounds of grounded options (ui-ux-pro-max skill data, shown as
+     live mockups) for a tool meant to be looked at for hours at a time.
+     Every value below is contrast-verified against its actual background
+     with the real WCAG relative-luminance formula, not eyeballed. */
+  --accent: #3b6fe0;
+  /* Two different jobs that happen to share one value in light mode but
+     must not in dark mode: --accent-strong is a COLOR - text/icons drawn
+     on top of --bg or --accent-tint, so it needs to stay legible against a
+     dark surface (light) in dark mode. --accent-hover is a STATE - what
+     the filled button background becomes on hover, which needs to read as
+     a change FROM --accent, not collapse into the same light value
+     --accent-strong needs for text. */
+  --accent-strong: #2e58c0;
+  --accent-hover: #2e58c0;
+  --accent-tint: rgba(59, 111, 224, 0.11);
+  --accent-text: #ffffff; /* 4.63:1 on --accent - verified */
 
   --diff-add: #1a7f37;
   --diff-add-bg: rgba(26, 127, 55, 0.08);
   --diff-remove: #c0392b;
   --diff-remove-bg: rgba(192, 57, 43, 0.08);
 
-  --bg: #faf9f6;
+  --bg: #f7f8fa;
   --bg-elevated: #ffffff;
-  --border: #e7e3db;
-  --border-soft: #efece5;
-  --text: #211f1c;
-  --text-muted: #756e63;
-  --text-faint: #a39c8f;
-  --shadow: 0 1px 2px rgba(30, 25, 15, 0.04), 0 6px 20px rgba(30, 25, 15, 0.05);
+  --border: #e3e6eb;
+  --border-soft: #eceef2;
+  --text: #12151c;
+  --text-muted: #5b6472; /* 5.63:1 */
+  --text-faint: #647082; /* 4.73:1 */
 
-  --sidebar-bg: #1c1a1f;
-  --sidebar-text: #eeecf2;
-  --sidebar-muted: #948fa3;
-  --sidebar-border: #2c2933;
-  --sidebar-hover: #262330;
-  --sidebar-input-bg: #100f13;
+  /* A real elevation scale (Soft Elevation) instead of one flat --shadow -
+     sm for buttons/inputs, md for cards/panels, lg for floating overlays
+     (the compare modal), accent for the filled primary button specifically. */
+  --shadow-sm: 0 1px 2px rgba(20, 30, 50, 0.06);
+  --shadow-md: 0 4px 16px rgba(20, 30, 50, 0.07);
+  --shadow-lg: 0 10px 30px rgba(20, 30, 50, 0.14);
+  --shadow-accent: 0 2px 8px rgba(59, 111, 224, 0.28);
+
+  --sidebar-bg: #0e1116;
+  --sidebar-text: #e7ebf0;
+  --sidebar-muted: #828b98; /* 5.49:1 */
+  --sidebar-border: #1d222a;
+  --sidebar-hover: #171b22;
+  --sidebar-input-bg: #0a0c10;
   --sidebar-warn: #e0a94b;
   --sidebar-warn-tint: rgba(224, 169, 75, 0.16);
 
-  --radius-sm: 7px;
-  --radius-lg: 16px;
+  --radius-sm: 10px;
+  --radius-lg: 14px;
 
   /* One spacing scale, used everywhere - nothing gets an arbitrary
      in-between value outside of this set. */
@@ -54,15 +74,25 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #16151a;
-  --bg-elevated: #1e1d24;
-  --border: #2c2a34;
-  --border-soft: #26242c;
-  --text: #ece9f2;
-  --text-muted: #a29cb3;
-  --text-faint: #6d6880;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
-  --accent-tint: rgba(139, 125, 255, 0.16);
+  --bg: #12151b;
+  --bg-elevated: #191d24;
+  --border: #262b33;
+  --border-soft: #1e222a;
+  --text: #eceef1;
+  --text-muted: #8a93a0; /* 5.89:1 */
+  --text-faint: #78818d; /* 4.63:1 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-accent: 0 2px 8px rgba(91, 138, 240, 0.35);
+  --accent: #5b8af0;
+  --accent-strong: #aec5f7;
+  --accent-hover: #71a0f5;
+  --accent-tint: rgba(91, 138, 240, 0.18);
+  /* White fails here (3.31:1) - the dark-theme accent is bright enough that
+     it needs dark text on top, verified, not assumed from the light theme's
+     own accent-text choice. */
+  --accent-text: #10141a; /* 5.71:1 on --accent */
   --diff-add: #4ade80;
   --diff-add-bg: rgba(74, 222, 128, 0.12);
   --diff-remove: #f87171;
@@ -71,15 +101,22 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #16151a;
-    --bg-elevated: #1e1d24;
-    --border: #2c2a34;
-    --border-soft: #26242c;
-    --text: #ece9f2;
-    --text-muted: #a29cb3;
-    --text-faint: #6d6880;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
-    --accent-tint: rgba(139, 125, 255, 0.16);
+    --bg: #12151b;
+    --bg-elevated: #191d24;
+    --border: #262b33;
+    --border-soft: #1e222a;
+    --text: #eceef1;
+    --text-muted: #8a93a0;
+    --text-faint: #78818d;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+    --shadow-accent: 0 2px 8px rgba(91, 138, 240, 0.35);
+    --accent: #5b8af0;
+    --accent-strong: #aec5f7;
+    --accent-hover: #71a0f5;
+    --accent-tint: rgba(91, 138, 240, 0.18);
+    --accent-text: #10141a;
     --diff-add: #4ade80;
     --diff-add-bg: rgba(74, 222, 128, 0.12);
     --diff-remove: #f87171;
@@ -89,6 +126,32 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* No interactive element anywhere in this stylesheet had a visible
+   keyboard-focus indicator before this rule - a single universal
+   :focus-visible ring, rather than one per component, so nothing new can
+   ever silently ship unfocusable-looking. :focus-visible (not :focus) so
+   this never adds a ring on a plain mouse click, only on real keyboard
+   navigation. --accent reads clearly against both the light content area
+   and the dark sidebar, so one color choice covers both contexts. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Respect the user's own motion preference globally rather than needing to
+   remember it per-animation - one rule that covers every transition/
+   animation in the stylesheet today and any added later, rather than
+   something to remember per new component. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Load-bearing, not decorative: [hidden] and a class selector that also
@@ -110,10 +173,14 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+  /* Inter now actually loads (index.html's <link>), so it leads the stack
+     instead of sitting unused after the system-font names that always
+     matched first before. */
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14.5px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
 }
 
 .app {
@@ -150,15 +217,33 @@ body {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-5) var(--space-4) var(--space-3);
-  font-weight: 650;
-  font-size: 0.98rem;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.015em;
   flex-shrink: 0;
 }
 
-.brand svg {
-  color: var(--accent);
+/* Distilled from the app's own version-chip shape (three stacked bars, most
+   recent brightest) rather than a generic document/folder glyph - see
+   memory-bank/activeContext.md for the design round that got here. */
+.brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #e9efff;
   flex-shrink: 0;
+}
+
+.brand-word {
+  color: var(--sidebar-text);
+}
+
+.brand-word-accent {
+  color: var(--accent);
 }
 
 .sidebar-nav {
@@ -193,7 +278,7 @@ body {
 
 .nav-item.nav-active {
   background: var(--accent-tint);
-  color: #d6d0ff;
+  color: #aec5f7;
 }
 
 .nav-item svg {
@@ -210,7 +295,7 @@ body {
 
 .sidebar-section-label {
   font-size: 0.68rem;
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--sidebar-muted);
@@ -297,7 +382,7 @@ body {
 }
 
 .family-list li.selected svg {
-  color: #c9c2ff;
+  color: #aec5f7;
 }
 
 .family-list .item-text {
@@ -452,12 +537,13 @@ body {
   font-weight: 600;
   font-size: 0.82rem;
   cursor: pointer;
-  transition: background 0.12s ease, transform 0.05s ease;
+  box-shadow: var(--shadow-accent);
+  transition: background 0.12s ease, transform 0.05s ease, box-shadow 0.15s ease;
 }
 
 #track-form button:hover,
 #settings-form button:hover {
-  background: var(--accent-strong);
+  background: var(--accent-hover);
 }
 
 #track-form button:active,
@@ -527,8 +613,8 @@ body {
 .detail-heading h2 {
   margin: 0 0 0.2rem;
   font-size: 1.3rem;
-  font-weight: 650;
-  letter-spacing: -0.015em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -622,12 +708,25 @@ body {
   flex-shrink: 0;
   color: var(--text-muted);
   text-decoration: none;
+  font-family: inherit;
   font-size: 0.82rem;
   font-weight: 500;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   margin-top: 0.15rem;
+  /* This class is shared by both <a> (no default appearance) and <button>
+     elements (revert-button, lavish-prompt-button) - without an explicit
+     reset, a plain <button> falls back to the browser's native control
+     chrome, which under this page's color-scheme: dark renders as a pale,
+     disabled-looking box instead of matching its sibling <a> buttons. The
+     same fix already existed on .untrack-action alone; lifted to the base
+     class so every button using .open-in-tab gets it, not just that one. */
+  background: none;
+  appearance: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .open-in-tab:hover {
@@ -640,12 +739,6 @@ body {
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
-}
-
-.untrack-action {
-  background: none;
-  cursor: pointer;
-  font-family: inherit;
 }
 
 .untrack-action:hover {
@@ -752,7 +845,7 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -776,7 +869,7 @@ body {
 .modal-header h3 {
   margin: 0;
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .modal-close {
@@ -885,7 +978,7 @@ body {
 .compare-rendered-label {
   flex-shrink: 0;
   font-size: 0.72rem;
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-faint);
@@ -951,7 +1044,7 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
@@ -1017,7 +1110,7 @@ body {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
   padding: var(--space-5);
 }
 
@@ -1059,7 +1152,7 @@ body {
 .info-block h3 {
   margin: 0 0 var(--space-2);
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-faint);
@@ -1138,7 +1231,7 @@ body {
 
 .info-block p.info-label {
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0 0 var(--space-1);
 }
 
@@ -1160,6 +1253,7 @@ body {
   font-size: 0.82rem;
   cursor: pointer;
   margin-top: var(--space-1);
+  box-shadow: var(--shadow-sm);
 }
 
 .danger-zone .danger-button:hover {
@@ -1240,6 +1334,7 @@ body {
   font-weight: 600;
   font-size: 0.82rem;
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
 }
 
 .secondary-button:hover {
@@ -1263,7 +1358,7 @@ body {
 
 #track-form button.secondary-button:hover {
   border-color: var(--accent);
-  color: #efe9ff;
+  color: #aec5f7;
 }
 
 #track-form button.link-button {
@@ -1311,6 +1406,31 @@ body {
   align-items: center;
   gap: var(--space-3);
   margin-top: var(--space-2);
+}
+
+.field-help {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--sidebar-muted);
+  line-height: 1.4;
+}
+
+.track-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.track-preview-row {
+  font-size: 0.76rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--sidebar-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.track-preview-row.match {
+  color: var(--sidebar-text);
 }
 
 /* ---------- Reconnect banner ---------- */
