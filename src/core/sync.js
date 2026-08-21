@@ -96,11 +96,26 @@ async function fetchAndResolveCaseA(url, { dryRun }) {
       // separate git histories with no common ancestor at all. Git refuses
       // that by default ("refusing to merge unrelated histories"); this is
       // exactly the expected shape for Case B, not an error condition.
-      await runGit(storePath(), ["merge", "origin/main", "--no-commit", "--allow-unrelated-histories"]);
-    } catch (mergeErr) {
-      // TEMPORARY - diagnosing a CI-only failure (passes on macOS, fails on
-      // Ubuntu/Windows in GitHub Actions) that can't be reproduced locally.
-      console.error("DEBUG_SYNC_MERGE_ERROR:", mergeErr && mergeErr.message);
+      //
+      // -c user.email/user.name (same pattern store.js's commitAll() already
+      // uses): for any non-fast-forward merge, git validates committer
+      // identity up front even with --no-commit, since a real commit could
+      // still happen - it just never actually calls commit. Invisible on a
+      // machine with a global git identity already configured (this
+      // project's own dev machine, every time this was tested locally), but
+      // a real "Committer identity unknown" (exit 128) failure on a CI
+      // runner with no global identity - caught by CI, not local testing.
+      await runGit(storePath(), [
+        "-c",
+        "user.email=docmanager@local",
+        "-c",
+        "user.name=docmanager",
+        "merge",
+        "origin/main",
+        "--no-commit",
+        "--allow-unrelated-histories",
+      ]);
+    } catch {
       mergeInProgress = true;
       const conflicts = await parseConflictedPaths();
 
