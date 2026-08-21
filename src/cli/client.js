@@ -69,6 +69,7 @@ export const coreClient = {
   updateSettings: (patch) => request("PUT", "/settings", patch),
   pushSnapshot: (acknowledgePrivacy = false) => request("POST", "/snapshot/push", { acknowledgePrivacy }),
   pullSnapshot: () => request("POST", "/snapshot/pull"),
+  syncSnapshot: (dryRun = false, autoLink = true) => request("POST", "/snapshot/sync", { dryRun, autoLink }),
   runDoctor: () => request("GET", "/doctor"),
   runGc: () => request("POST", "/maintenance/gc"),
   exportContent: (hash) => requestRaw(`/content/${encodeURIComponent(hash)}`),

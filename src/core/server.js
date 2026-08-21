@@ -15,6 +15,7 @@ import { checkSshSetup } from "./ssh-check.js";
 import { getSettings, updateSettings } from "./settings.js";
 import { subscribe, unsubscribe, broadcast } from "./events.js";
 import { pushSnapshot, pullSnapshot } from "./snapshot.js";
+import { syncSnapshot } from "./sync.js";
 import { markActivity } from "./activity.js";
 import { requestShutdown } from "./shutdown.js";
 
@@ -309,6 +310,21 @@ const ROUTES = [
       // and merge paths change the store) - just broadcast here.
       const result = await pullSnapshot();
       broadcast("families-changed");
+      return { status: 200, body: result };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/snapshot\/sync$/,
+    handler: async (req) => {
+      const body = await readJsonBody(req);
+      const result = await syncSnapshot({
+        dryRun: Boolean(body.dryRun),
+        autoLink: body.autoLink !== false,
+      });
+      // syncSnapshot() already rebuilds the index itself for anything it
+      // actually persists - a dry run changes nothing, so no broadcast.
+      if (!body.dryRun) broadcast("families-changed");
       return { status: 200, body: result };
     },
   },
