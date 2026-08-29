@@ -346,6 +346,34 @@ export async function setFamilyTags(familyId, tags) {
 }
 
 /**
+ * Sets a family's folder membership, or null to unfile it back to root.
+ * Purely a metadata pointer - the caller (server.js's route handler) is
+ * responsible for having already confirmed the target folder actually
+ * exists via folders.js's getFolder(). store.js deliberately has no
+ * dependency on folders.js (folders.js already depends on store.js for
+ * listFamilyIds/getFamily - a dependency the other direction would be
+ * circular), so this function trusts its input the same way
+ * setFamilyTags() trusts an arbitrary tag string.
+ */
+export async function moveFamilyToFolder(familyId, folderId) {
+  return serialize(async () => {
+    const family = getFamily(familyId);
+    if (!family) {
+      const err = new Error(`No family with id "${familyId}"`);
+      err.code = "FAMILY_NOT_FOUND";
+      throw err;
+    }
+    if ((family.folderId ?? null) === (folderId ?? null)) {
+      return { changed: false, family };
+    }
+    family.folderId = folderId;
+    writeFamilyUnlocked(family);
+    await commitAll(`Move ${family.syntheticPath} to folder ${folderId ?? "(unfiled)"}`);
+    return { changed: true, family };
+  });
+}
+
+/**
  * Permanently removes ONE version's record from a family - not the whole
  * family (see deleteFamily/untrack for that). Heals the supersedes chain so
  * history stays continuous instead of leaving a dangling pointer to a hash

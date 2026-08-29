@@ -18,7 +18,8 @@ function buildSchema(db) {
       created_at TEXT,
       head_version TEXT,
       version_count INTEGER,
-      tags_json TEXT
+      tags_json TEXT,
+      folder_id TEXT
     );
     CREATE TABLE versions (
       family_id TEXT NOT NULL,
@@ -78,7 +79,7 @@ export function rebuildIndex() {
   try {
     buildSchema(db);
     const insertFamily = db.prepare(
-      "INSERT INTO families (id, synthetic_path, title, created_at, head_version, version_count, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO families (id, synthetic_path, title, created_at, head_version, version_count, tags_json, folder_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
     const insertVersion = db.prepare(
       "INSERT INTO versions (family_id, hash, created_at, source_file_name, supersedes) VALUES (?, ?, ?, ?, ?)",
@@ -112,6 +113,7 @@ export function rebuildIndex() {
           family.headVersion,
           versionEntries.length,
           JSON.stringify(tags),
+          family.folderId ?? null,
         );
         for (const [hash, v] of versionEntries) {
           insertVersion.run(family.id, hash, v.createdAt, v.sourceFileName ?? null, v.supersedes ?? null);
@@ -158,7 +160,7 @@ export function listFamiliesFromIndex() {
   const db = openIndex();
   return db
     .prepare(
-      "SELECT id, synthetic_path as syntheticPath, title, created_at as createdAt, head_version as headVersion, version_count as versionCount, tags_json as tagsJson FROM families ORDER BY created_at DESC",
+      "SELECT id, synthetic_path as syntheticPath, title, created_at as createdAt, head_version as headVersion, version_count as versionCount, tags_json as tagsJson, folder_id as folderId FROM families ORDER BY created_at DESC",
     )
     .all()
     .map(({ tagsJson, ...rest }) => ({ ...rest, tags: tagsJson ? JSON.parse(tagsJson) : [] }));
@@ -212,7 +214,7 @@ export function getFamilyFromIndex(id) {
   const db = openIndex();
   const row = db
     .prepare(
-      "SELECT id, synthetic_path as syntheticPath, title, created_at as createdAt, head_version as headVersion, tags_json as tagsJson FROM families WHERE id = ?",
+      "SELECT id, synthetic_path as syntheticPath, title, created_at as createdAt, head_version as headVersion, tags_json as tagsJson, folder_id as folderId FROM families WHERE id = ?",
     )
     .get(id);
   if (!row) return null;

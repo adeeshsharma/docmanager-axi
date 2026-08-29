@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { useIsolatedHome, cleanupHome } from "./helpers.js";
 import { createFolder, getFolder, listFolders, renameFolder, deleteFolder, reparentFolder } from "../src/core/folders.js";
 import { createFamily, moveFamilyToFolder } from "../src/core/store.js";
+import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex } from "../src/core/index.js";
 
 let homeDir;
 beforeEach(() => {
@@ -105,4 +106,20 @@ test("deleteFolder refuses a folder with a family inside", async () => {
 
 test("deleteFolder rejects an unknown id", async () => {
   await assert.rejects(deleteFolder("does-not-exist"), (err) => err.code === "FOLDER_NOT_FOUND");
+});
+
+test("folderId defaults to null and survives the index round-trip", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  rebuildIndex();
+  assert.equal(getFamilyFromIndex(family.id).folderId, null);
+  assert.equal(listFamiliesFromIndex().find((f) => f.id === family.id).folderId, null);
+});
+
+test("a moved family's folderId survives the index round-trip", async () => {
+  const folder = await createFolder({ name: "Reports" });
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  await moveFamilyToFolder(family.id, folder.id);
+  rebuildIndex();
+  assert.equal(getFamilyFromIndex(family.id).folderId, folder.id);
+  assert.equal(listFamiliesFromIndex().find((f) => f.id === family.id).folderId, folder.id);
 });
