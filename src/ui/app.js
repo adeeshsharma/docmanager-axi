@@ -1,5 +1,6 @@
 const state = {
   families: [],
+  folders: [],
   suggestedLinks: [],
   searchResults: null, // null = showing the normal tracked-document list, an array = showing search results
   selectedId: null,
@@ -7,6 +8,7 @@ const state = {
   viewingHash: null, // which version is currently loaded in the reading frame
   lastKnownHeadVersion: null, // headVersion as of the last time we synced with the server
   bulkSelectedIds: new Set(), // family ids checked for bulk actions, persists across list re-renders
+  expandedFolderIds: new Set(), // folder ids currently expanded in the sidebar tree, persists across re-renders
 };
 
 // Bumped by every selectFamily() call. A concurrent background refresh
@@ -115,6 +117,11 @@ function highlightSnippet(text) {
 const DOC_ICON =
   '<svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M5 2.5h7l3.5 3.5V17a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 2.5V6h3.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
 
+const FOLDER_ICON =
+  '<svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.5 2h7.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+const CHEVRON_ICON =
+  '<svg viewBox="0 0 16 16" fill="none" width="10" height="10" class="chevron"><path d="M5 3l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 // Maps each family id to the OTHER synthetic paths a cheap heuristic (title
 // or structural match, see suggest.js) thinks it might be the same document
 // as - suggestion-only, never acted on automatically, so this only ever
@@ -140,9 +147,8 @@ function renderSearchResults() {
   const items = state.searchResults
     .map((r) => {
       const isSelected = r.id === state.selectedId;
-      const selected = isSelected ? " selected" : "";
       const checked = state.bulkSelectedIds.has(r.id) ? " checked" : "";
-      return `<li class="${selected.trim()}" data-id="${r.id}" role="button" tabindex="0" aria-current="${isSelected}">
+      return `<li class="family-row${isSelected ? " selected" : ""}" data-id="${r.id}" role="button" tabindex="0" aria-current="${isSelected}">
         <input type="checkbox" class="family-select" data-id="${r.id}"${checked} aria-label="Select for bulk actions" />
         ${DOC_ICON}
         <div class="item-text">
@@ -162,39 +168,86 @@ function renderFamilyList() {
     return;
   }
   el.familyListLabel.textContent = "Tracked documents";
+  renderFamilyTree();
+}
 
-  if (state.families.length === 0) {
+function buildFolderTree() {
+  const byParent = new Map();
+  for (const folder of state.folders) {
+    const key = folder.parentId ?? "root";
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(folder);
+  }
+  const familiesByFolder = new Map();
+  for (const family of state.families) {
+    const key = family.folderId ?? "root";
+    if (!familiesByFolder.has(key)) familiesByFolder.set(key, []);
+    familiesByFolder.get(key).push(family);
+  }
+  return { byParent, familiesByFolder };
+}
+
+function renderFamilyRow(family, duplicates) {
+  const isSelected = family.id === state.selectedId;
+  const checked = state.bulkSelectedIds.has(family.id) ? " checked" : "";
+  const otherPaths = duplicates.get(family.id);
+  const dupBadge = otherPaths
+    ? `<span class="dup-badge" title="Possibly the same document as ${escapeHtml(otherPaths.join(", "))}">possible duplicate</span>`
+    : "";
+  const tagBadges = (family.tags ?? [])
+    .map((t) => `<span class="tag-chip tag-chip-small">${escapeHtml(t)}</span>`)
+    .join("");
+  return `<li class="family-row${isSelected ? " selected" : ""}" data-id="${family.id}" role="button" tabindex="0" aria-current="${isSelected}">
+    <input type="checkbox" class="family-select" data-id="${family.id}"${checked} aria-label="Select for bulk actions" />
+    ${DOC_ICON}
+    <div class="item-text">
+      <div class="path">${escapeHtml(family.syntheticPath)}</div>
+      <div class="meta">${family.versionCount} version${family.versionCount === 1 ? "" : "s"}${dupBadge}${tagBadges}</div>
+    </div>
+  </li>`;
+}
+
+function renderFolderNode(folder, tree, duplicates, depth) {
+  const isExpanded = state.expandedFolderIds.has(folder.id);
+  const childFolders = tree.byParent.get(folder.id) ?? [];
+  const childFamilies = tree.familiesByFolder.get(folder.id) ?? [];
+  const childCount = childFolders.length + childFamilies.length;
+  const childrenHtml = isExpanded
+    ? `<ul class="folder-children">
+        ${childFolders.map((f) => renderFolderNode(f, tree, duplicates, depth + 1)).join("")}
+        ${childFamilies.map((f) => renderFamilyRow(f, duplicates)).join("")}
+      </ul>`
+    : "";
+  return `<li class="folder-row" data-folder-id="${folder.id}" style="--depth: ${depth}">
+    <div class="folder-header" role="button" tabindex="0" aria-expanded="${isExpanded}">
+      <span class="chevron-wrap${isExpanded ? " expanded" : ""}">${CHEVRON_ICON}</span>
+      ${FOLDER_ICON}
+      <span class="folder-name">${escapeHtml(folder.name)}</span>
+      <span class="meta">${childCount}</span>
+      <button type="button" class="icon-button folder-menu-button" data-folder-id="${folder.id}" title="Folder actions" aria-label="Folder actions">⋯</button>
+    </div>
+    ${childrenHtml}
+  </li>`;
+}
+
+function renderFamilyTree() {
+  if (state.families.length === 0 && state.folders.length === 0) {
     el.familyList.innerHTML = '<p class="empty">Nothing tracked yet.</p>';
     return;
   }
 
   const duplicates = possibleDuplicatesByFamilyId();
+  const tree = buildFolderTree();
+  const rootFolders = tree.byParent.get("root") ?? [];
+  const rootFamilies = tree.familiesByFolder.get("root") ?? [];
 
-  const items = state.families
-    .map((family) => {
-      const isSelected = family.id === state.selectedId;
-      const selected = isSelected ? " selected" : "";
-      const checked = state.bulkSelectedIds.has(family.id) ? " checked" : "";
-      const otherPaths = duplicates.get(family.id);
-      const dupBadge = otherPaths
-        ? `<span class="dup-badge" title="Possibly the same document as ${escapeHtml(otherPaths.join(", "))}">possible duplicate</span>`
-        : "";
-      const tagBadges = (family.tags ?? [])
-        .map((t) => `<span class="tag-chip tag-chip-small">${escapeHtml(t)}</span>`)
-        .join("");
-      return `<li class="${selected.trim()}" data-id="${family.id}" role="button" tabindex="0" aria-current="${isSelected}">
-        <input type="checkbox" class="family-select" data-id="${family.id}"${checked} aria-label="Select for bulk actions" />
-        ${DOC_ICON}
-        <div class="item-text">
-          <div class="path">${escapeHtml(family.syntheticPath)}</div>
-          <div class="meta">${family.versionCount} version${family.versionCount === 1 ? "" : "s"}${dupBadge}${tagBadges}</div>
-        </div>
-      </li>`;
-    })
-    .join("");
-
-  el.familyList.innerHTML = `<ul>${items}</ul>`;
+  const items = [
+    ...rootFolders.map((f) => renderFolderNode(f, tree, duplicates, 0)),
+    ...rootFamilies.map((f) => renderFamilyRow(f, duplicates)),
+  ].join("");
+  el.familyList.innerHTML = `<ul class="folder-tree">${items}</ul>`;
   wireFamilyListItems();
+  wireFolderTreeItems();
 }
 
 // Activates a row on Enter/Space the same way a real <button> would,
@@ -214,7 +267,7 @@ function onActivateKeydown(handler) {
 }
 
 function wireFamilyListItems() {
-  for (const li of el.familyList.querySelectorAll("li")) {
+  for (const li of el.familyList.querySelectorAll("li.family-row")) {
     li.addEventListener("click", () => selectFamily(li.dataset.id));
     li.addEventListener("keydown", onActivateKeydown(() => selectFamily(li.dataset.id)));
   }
@@ -229,6 +282,26 @@ function wireFamilyListItems() {
       }
       updateBulkActionsBar();
     });
+  }
+}
+
+function toggleFolderExpanded(folderId) {
+  if (state.expandedFolderIds.has(folderId)) {
+    state.expandedFolderIds.delete(folderId);
+  } else {
+    state.expandedFolderIds.add(folderId);
+  }
+  renderFamilyList();
+}
+
+function wireFolderTreeItems() {
+  for (const header of el.familyList.querySelectorAll(".folder-header")) {
+    const folderId = header.closest(".folder-row").dataset.folderId;
+    header.addEventListener("click", (event) => {
+      if (event.target.closest(".folder-menu-button")) return;
+      toggleFolderExpanded(folderId);
+    });
+    header.addEventListener("keydown", onActivateKeydown(() => toggleFolderExpanded(folderId)));
   }
 }
 
@@ -523,8 +596,12 @@ el.versionBannerAction.addEventListener("click", () => {
 
 async function refreshDocuments() {
   try {
-    const { families, suggestedLinks } = await api("GET", "/families");
+    const [{ families, suggestedLinks }, { folders }] = await Promise.all([
+      api("GET", "/families"),
+      api("GET", "/folders"),
+    ]);
     state.families = families;
+    state.folders = folders;
     state.suggestedLinks = suggestedLinks ?? [];
     const stillTracked = new Set(families.map((f) => f.id));
     for (const id of state.bulkSelectedIds) {
