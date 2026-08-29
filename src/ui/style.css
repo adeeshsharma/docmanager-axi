@@ -302,6 +302,32 @@ body {
   padding: var(--space-2) var(--space-3) var(--space-1);
 }
 
+.sidebar-section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: var(--space-3);
+}
+
+.sidebar-section-label-row .sidebar-section-label {
+  padding-right: 0;
+}
+
+#new-folder-button {
+  background: none;
+  border: none;
+  color: var(--sidebar-muted);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+#new-folder-button:hover {
+  color: var(--sidebar-text);
+}
+
 .search-box {
   display: flex;
   align-items: center;

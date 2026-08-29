@@ -26,6 +26,7 @@ const el = {
   viewSettings: document.getElementById("view-settings"),
   familyList: document.getElementById("family-list"),
   familyListLabel: document.getElementById("family-list-label"),
+  newFolderButton: document.getElementById("new-folder-button"),
   bulkActionsBar: document.getElementById("bulk-actions-bar"),
   bulkActionsCount: document.getElementById("bulk-actions-count"),
   bulkUntrackButton: document.getElementById("bulk-untrack-button"),
@@ -302,6 +303,14 @@ function wireFolderTreeItems() {
       toggleFolderExpanded(folderId);
     });
     header.addEventListener("keydown", onActivateKeydown(() => toggleFolderExpanded(folderId)));
+  }
+  for (const button of el.familyList.querySelectorAll(".folder-menu-button")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const folderId = button.dataset.folderId;
+      const folder = state.folders.find((f) => f.id === folderId);
+      handleFolderMenu(folderId, folder?.name ?? "");
+    });
   }
 }
 
@@ -799,6 +808,60 @@ el.stopCoreButton.addEventListener("click", async () => {
     el.stopCoreStatus.textContent = "Stopped. This page will no longer update.";
   }
 });
+
+el.newFolderButton.addEventListener("click", async () => {
+  const name = window.prompt("New folder name:");
+  if (!name || !name.trim()) return;
+  try {
+    await api("POST", "/folders", { name: name.trim() });
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not create folder: ${err.message}`);
+  }
+});
+
+async function handleFolderMenu(folderId, folderName) {
+  const action = window.prompt(
+    `"${folderName}" - type one of: subfolder, rename, delete`,
+  );
+  if (!action) return;
+  const normalized = action.trim().toLowerCase();
+
+  if (normalized === "subfolder") {
+    const name = window.prompt("New subfolder name:");
+    if (!name || !name.trim()) return;
+    try {
+      await api("POST", "/folders", { name: name.trim(), parentId: folderId });
+      refreshDocuments();
+    } catch (err) {
+      window.alert(`Could not create subfolder: ${err.message}`);
+    }
+    return;
+  }
+
+  if (normalized === "rename") {
+    const newName = window.prompt("Rename folder to:", folderName);
+    if (!newName || !newName.trim() || newName.trim() === folderName) return;
+    try {
+      await api("POST", `/folders/${folderId}/rename`, { name: newName.trim() });
+      refreshDocuments();
+    } catch (err) {
+      window.alert(`Could not rename folder: ${err.message}`);
+    }
+    return;
+  }
+
+  if (normalized === "delete") {
+    const confirmed = window.confirm(`Delete "${folderName}"? This only works if it's empty - nothing inside is ever deleted automatically.`);
+    if (!confirmed) return;
+    try {
+      await api("DELETE", `/folders/${folderId}`);
+      refreshDocuments();
+    } catch (err) {
+      window.alert(`Could not delete folder: ${err.message}`);
+    }
+  }
+}
 
 el.renameButton.addEventListener("click", async () => {
   if (!state.selectedId || !state.detailFamily) return;
