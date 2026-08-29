@@ -45,7 +45,7 @@ export function withStoreLock(fn) {
   return serialize(fn);
 }
 
-async function commitAll(message) {
+export async function commitAll(message) {
   await runGit(storePath(), ["add", "-A"]);
   await runGit(storePath(), [
     "-c",
@@ -64,7 +64,7 @@ async function commitAll(message) {
 // callback. Actually initializes the git repo, not just the directories -
 // every mutating operation needs a real repo to commit into, not only the
 // explicit initStore() call.
-async function ensureStoreReadyUnlocked() {
+export async function ensureStoreReadyUnlocked() {
   if (existsSync(storePath())) return;
   mkdirSync(contentDir(), { recursive: true });
   mkdirSync(familiesDir(), { recursive: true });
