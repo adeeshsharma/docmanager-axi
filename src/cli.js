@@ -49,6 +49,8 @@ Usage:
   docmanager folders move <id> [--parent <id>]
                                        Move a folder under a different parent (omit --parent for root)
   docmanager folders delete <id>      Delete an empty folder (refuses if it still has anything inside)
+  docmanager families move <id>... --to-folder <folderId>
+                                       Move one or more documents into a folder (use --unfile to remove from any folder)
   docmanager status                   Reconcile and show current tracked state
   docmanager search <query>           Keyword search over tracked documents' titles and text (current
                                        version only, not semantic search)
@@ -454,6 +456,38 @@ async function familiesCommand(args) {
     };
   }
 
+  if (sub === "move") {
+    const { flags, positional } = parseFlags(args.slice(1), ["to-folder", "unfile"], ["unfile"]);
+    if (positional.length === 0) {
+      throw new AxiError("at least one id is required", "VALIDATION_ERROR", [
+        "docmanager families move <id>... --to-folder <folderId>",
+        "docmanager families move <id>... --unfile",
+      ]);
+    }
+    if (flags["to-folder"] === undefined && !flags.unfile) {
+      throw new AxiError("--to-folder <folderId> or --unfile is required", "VALIDATION_ERROR", [
+        "docmanager families move <id>... --to-folder <folderId>",
+        "docmanager families move <id>... --unfile",
+      ]);
+    }
+    const folderId = flags.unfile ? null : flags["to-folder"];
+    let results, summary;
+    try {
+      ({ results, summary } = await coreClient.moveDocuments(positional, folderId));
+    } catch (err) {
+      throw toAxiError(err);
+    }
+    const moved = results.filter((r) => r.status === "moved");
+    const errors = results.filter((r) => r.status === "error");
+    const output = {
+      summary: `${summary.movedCount} moved, ${summary.errorCount} failed`,
+      help: ["Run `docmanager families` to confirm"],
+    };
+    if (moved.length > 0) output.moved = moved.map((r) => r.id);
+    if (errors.length > 0) output.errors = errors.map((r) => ({ id: r.id, error: r.error, code: r.code }));
+    return output;
+  }
+
   if (sub === "export") {
     const hash = args[2];
     const { flags } = parseFlags(args.slice(3), ["to"]);
@@ -574,6 +608,7 @@ async function familiesCommand(args) {
       "docmanager families revert <id> <hash>",
       "docmanager families delete-version <id> <hash>",
       "docmanager families rename <id> <newSyntheticPath>",
+      "docmanager families move <id>... --to-folder <folderId>",
       'docmanager families tags <id> [--set "a,b"] [--add <tag>] [--remove <tag>]',
       "docmanager families export <id> <hash> --to <path>",
       "docmanager families lavish <id> <hash>",

@@ -65,6 +65,7 @@ export const coreClient = {
   renameFolder: (id, name) => request("POST", `/folders/${id}/rename`, { name }),
   moveFolder: (id, parentId) => request("POST", `/folders/${id}/move`, { parentId }),
   deleteFolder: (id) => request("DELETE", `/folders/${id}`),
+  moveDocuments: (ids, folderId) => request("POST", "/documents/move", { ids, folderId }),
   getFamilyDiff: (id, hashA, hashB) =>
     request("GET", `/families/${id}/diff?a=${encodeURIComponent(hashA)}&b=${encodeURIComponent(hashB)}`),
   listFamilies: () => request("GET", "/families"),

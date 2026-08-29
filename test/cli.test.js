@@ -424,6 +424,39 @@ test("folders create requires a name", async () => {
   assert.equal(result.code, 2);
 });
 
+test("families move puts a document in a folder, and --unfile takes it back out", async () => {
+  const filePath = join(fixtureDir, "moveme.html");
+  writeFileSync(filePath, "<html><body>v1</body></html>");
+  const tracked = await runCli(["track", filePath]);
+  const familyId = tracked.stdout.match(/id: (\S+)/)[1];
+
+  const folder = await runCli(["folders", "create", "MoveTarget"]);
+  const folderId = folder.stdout.match(/id: (\S+)/)[1];
+
+  const moved = await runCli(["families", "move", familyId, "--to-folder", folderId]);
+  assert.equal(moved.code, 0, moved.stderr);
+  assert.match(moved.stdout, /1 moved, 0 failed/);
+
+  const unfiled = await runCli(["families", "move", familyId, "--unfile"]);
+  assert.equal(unfiled.code, 0, unfiled.stderr);
+  assert.match(unfiled.stdout, /1 moved, 0 failed/);
+});
+
+test("families move to a nonexistent folder id fails without aborting other ids", async () => {
+  const filePath = join(fixtureDir, "moveme2.html");
+  writeFileSync(filePath, "<html><body>v1</body></html>");
+  const tracked = await runCli(["track", filePath]);
+  const familyId = tracked.stdout.match(/id: (\S+)/)[1];
+
+  const result = await runCli(["families", "move", familyId, "--to-folder", "does-not-exist"]);
+  assert.equal(result.code, 1);
+});
+
+test("families move requires --to-folder or --unfile", async () => {
+  const result = await runCli(["families", "move", "some-id"]);
+  assert.equal(result.code, 2);
+});
+
 test("core status reflects a real running core, and stop actually stops it", async () => {
   const status = await runCli(["core", "status"]);
   assert.match(status.stdout, /running/);

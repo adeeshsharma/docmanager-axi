@@ -4,7 +4,7 @@ import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION } from "../version.js";
 import { trackPaths, untrackFamilies, renameTrackedDocument } from "./track.js";
-import { mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags } from "./store.js";
+import { mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags, moveFamilyToFolder } from "./store.js";
 import { listFolders, getFolder, createFolder, renameFolder, reparentFolder, deleteFolder } from "./folders.js";
 import { diffVersions, renderHighlightedContent } from "./diff.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex, searchFamilies } from "./index.js";
@@ -263,6 +263,56 @@ const ROUTES = [
       const folder = await deleteFolder(match[1]);
       broadcast("families-changed");
       return { status: 200, body: { folder } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/families\/([^/]+)\/move$/,
+    handler: async (req, match) => {
+      const body = await readJsonBody(req);
+      const folderId = body.folderId ?? null;
+      if (folderId && !getFolder(folderId)) {
+        return { status: 400, body: { error: `No folder with id "${folderId}"`, code: "FOLDER_NOT_FOUND" } };
+      }
+      const { changed } = await moveFamilyToFolder(match[1], folderId);
+      if (changed) {
+        rebuildIndex();
+        broadcast("families-changed");
+      }
+      return { status: 200, body: { changed, family: getFamilyFromIndex(match[1]) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/documents\/move$/,
+    handler: async (req) => {
+      const body = await readJsonBody(req);
+      if (!Array.isArray(body.ids) || body.ids.length === 0) {
+        return { status: 400, body: { error: "ids (a non-empty array) is required" } };
+      }
+      const folderId = body.folderId ?? null;
+      if (folderId && !getFolder(folderId)) {
+        return { status: 400, body: { error: `No folder with id "${folderId}"`, code: "FOLDER_NOT_FOUND" } };
+      }
+      const results = [];
+      let movedCount = 0;
+      for (const id of body.ids) {
+        try {
+          const { changed } = await moveFamilyToFolder(id, folderId);
+          if (changed) movedCount++;
+          results.push({ id, status: "moved" });
+        } catch (err) {
+          results.push({ id, status: "error", error: err.message, code: err.code });
+        }
+      }
+      if (movedCount > 0) {
+        rebuildIndex();
+        broadcast("families-changed");
+      }
+      return {
+        status: 200,
+        body: { results, summary: { movedCount, errorCount: results.filter((r) => r.status === "error").length } },
+      };
     },
   },
   {
