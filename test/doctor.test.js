@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { useIsolatedHome, cleanupHome } from "./helpers.js";
-import { createFamily, storePath } from "../src/core/store.js";
+import { createFamily, storePath, moveFamilyToFolder, getFamily } from "../src/core/store.js";
 import { addMapping } from "../src/core/local-state.js";
 import { docmanagerHome } from "../src/core/paths.js";
 import { runDoctor } from "../src/core/doctor.js";
+import { createFolder, getFolder } from "../src/core/folders.js";
 
 let homeDir;
 beforeEach(() => {
@@ -131,4 +132,45 @@ test("git availability is checked fresh each run, not cached like the internal g
   } finally {
     process.env.PATH = originalPath;
   }
+});
+
+test("doctor reports folders as ok when nothing is dangling", async () => {
+  await createFamily({ syntheticPath: "/a", content: Buffer.from("<html><body>a</body></html>") });
+  await createFolder({ name: "Reports" });
+
+  const report = await runDoctor();
+
+  assert.equal(check(report, "folders").status, "ok");
+});
+
+test("doctor repairs a family pointing at a folder that no longer exists", async () => {
+  const folder = await createFolder({ name: "Temp" });
+  const family = await createFamily({ syntheticPath: "/a", content: Buffer.from("<html><body>a</body></html>") });
+  await moveFamilyToFolder(family.id, folder.id);
+  // Simulate the folder having disappeared some other way (e.g. a raw git
+  // conflict resolution) without going through deleteFolder's own
+  // not-empty guard - doctor has to handle a real dangling reference, not
+  // just the cooperative delete path.
+  unlinkSync(join(storePath(), "folders", `${folder.id}.json`));
+
+  const report = await runDoctor();
+
+  const folders = check(report, "folders");
+  assert.equal(folders.status, "repaired");
+  assert.equal(getFamily(family.id).folderId, null);
+});
+
+test("doctor repairs a folder whose parent no longer exists", async () => {
+  const parent = await createFolder({ name: "Parent" });
+  const childFolder = await createFolder({ name: "Child", parentId: parent.id });
+  // Also need a real family for runDoctor()'s deeper checks to run at all
+  // (see the existing "no store yet" test above in this file).
+  await createFamily({ syntheticPath: "/a", content: Buffer.from("<html><body>a</body></html>") });
+  unlinkSync(join(storePath(), "folders", `${parent.id}.json`));
+
+  const report = await runDoctor();
+
+  const folders = check(report, "folders");
+  assert.equal(folders.status, "repaired");
+  assert.equal(getFolder(childFolder.id).parentId, null);
 });
