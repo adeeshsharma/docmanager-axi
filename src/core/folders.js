@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { storePath, withStoreLock, ensureStoreReadyUnlocked, commitAll } from "./store.js";
+import { storePath, withStoreLock, ensureStoreReadyUnlocked, commitAll, listFamilyIds, getFamily } from "./store.js";
 
 function foldersDir() {
   return join(storePath(), "folders");
@@ -82,5 +82,82 @@ export async function renameFolder(id, newName) {
     writeFolderUnlocked(updated);
     await commitAll(`Rename folder ${folder.name} -> ${newName}`);
     return { changed: true, folder: updated };
+  });
+}
+
+// A cycle would exist if newParentId is the folder itself, or any of its
+// own descendants - walk up from newParentId toward the root; hitting `id`
+// along the way means moving there would make `id` its own ancestor.
+function wouldCreateCycle(id, newParentId) {
+  if (!newParentId) return false;
+  if (newParentId === id) return true;
+  let current = getFolder(newParentId);
+  while (current) {
+    if (current.id === id) return true;
+    if (!current.parentId) return false;
+    current = getFolder(current.parentId);
+  }
+  return false;
+}
+
+export async function reparentFolder(id, newParentId = null) {
+  return withStoreLock(async () => {
+    const folder = getFolder(id);
+    if (!folder) {
+      const err = new Error(`No folder with id "${id}"`);
+      err.code = "FOLDER_NOT_FOUND";
+      throw err;
+    }
+    if (newParentId && !getFolder(newParentId)) {
+      const err = new Error(`No folder with id "${newParentId}"`);
+      err.code = "FOLDER_NOT_FOUND";
+      throw err;
+    }
+    if ((folder.parentId ?? null) === (newParentId ?? null)) {
+      return { changed: false, folder };
+    }
+    if (wouldCreateCycle(id, newParentId)) {
+      const err = new Error(`Cannot move folder "${folder.name}" under one of its own descendants`);
+      err.code = "FOLDER_CYCLE";
+      throw err;
+    }
+    const updated = { ...folder, parentId: newParentId };
+    writeFolderUnlocked(updated);
+    await commitAll(`Move folder ${folder.name}`);
+    return { changed: true, folder: updated };
+  });
+}
+
+/**
+ * Deletes a folder - refuses unless it's genuinely empty (no child folder,
+ * no family pointing at it). Never cascades: moving contents out is always
+ * a separate, explicit step the caller takes first.
+ */
+export async function deleteFolder(id) {
+  return withStoreLock(async () => {
+    const folder = getFolder(id);
+    if (!folder) {
+      const err = new Error(`No folder with id "${id}"`);
+      err.code = "FOLDER_NOT_FOUND";
+      throw err;
+    }
+    const hasChildFolder = listFolders().some((f) => f.parentId === id);
+    const hasFamilyInside = listFamilyIds().some((famId) => {
+      let family;
+      try {
+        family = getFamily(famId);
+      } catch {
+        return false;
+      }
+      return family?.folderId === id;
+    });
+    if (hasChildFolder || hasFamilyInside) {
+      const err = new Error(`Folder "${folder.name}" is not empty - move its contents out first`);
+      err.code = "FOLDER_NOT_EMPTY";
+      throw err;
+    }
+    unlinkSync(folderFilePath(id));
+    await commitAll(`Delete folder ${folder.name}`);
+    return folder;
   });
 }
