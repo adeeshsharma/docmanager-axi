@@ -932,6 +932,37 @@ body {
   height: 94vh;
 }
 
+#folder-picker-modal .modal-dialog {
+  width: min(90vw, 380px);
+}
+
+.folder-picker-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+
+.folder-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.folder-picker-actions #folder-picker-cancel {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.folder-picker-actions #folder-picker-cancel:hover {
+  color: var(--text);
+}
+
 .modal-header {
   display: flex;
   align-items: center;

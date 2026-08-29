@@ -27,6 +27,14 @@ const el = {
   familyList: document.getElementById("family-list"),
   familyListLabel: document.getElementById("family-list-label"),
   newFolderButton: document.getElementById("new-folder-button"),
+  bulkMoveButton: document.getElementById("bulk-move-button"),
+  folderPickerModal: document.getElementById("folder-picker-modal"),
+  folderPickerClose: document.getElementById("folder-picker-close"),
+  folderPickerSelect: document.getElementById("folder-picker-select"),
+  folderPickerConfirm: document.getElementById("folder-picker-confirm"),
+  folderPickerCancel: document.getElementById("folder-picker-cancel"),
+  folderPickerStatus: document.getElementById("folder-picker-status"),
+  moveToFolderButton: document.getElementById("move-to-folder-button"),
   bulkActionsBar: document.getElementById("bulk-actions-bar"),
   bulkActionsCount: document.getElementById("bulk-actions-count"),
   bulkUntrackButton: document.getElementById("bulk-untrack-button"),
@@ -324,6 +332,17 @@ el.bulkClearButton.addEventListener("click", () => {
   state.bulkSelectedIds.clear();
   updateBulkActionsBar();
   renderFamilyList();
+});
+
+el.bulkMoveButton.addEventListener("click", () => {
+  const ids = [...state.bulkSelectedIds];
+  if (ids.length === 0) return;
+  openFolderPicker(async (folderId) => {
+    await api("POST", "/documents/move", { ids, folderId });
+    state.bulkSelectedIds.clear();
+    updateBulkActionsBar();
+    refreshDocuments();
+  });
 });
 
 el.bulkUntrackButton.addEventListener("click", async () => {
@@ -863,6 +882,14 @@ async function handleFolderMenu(folderId, folderName) {
   }
 }
 
+el.moveToFolderButton.addEventListener("click", () => {
+  if (!state.selectedId) return;
+  openFolderPicker(async (folderId) => {
+    await api("POST", `/families/${state.selectedId}/move`, { folderId });
+    refreshDocuments();
+  });
+});
+
 el.renameButton.addEventListener("click", async () => {
   if (!state.selectedId || !state.detailFamily) return;
   const current = state.detailFamily.syntheticPath;
@@ -981,6 +1008,55 @@ el.revertButton.addEventListener("click", async () => {
     viewVersion(state.viewingHash);
   } catch (err) {
     window.alert(`Could not revert: ${err.message}`);
+  }
+});
+
+// Builds "Parent / Child" style labels so a deeply nested folder is still
+// identifiable in a flat <select> - walks each folder's own parentId chain
+// using the already-loaded state.folders, no extra request needed.
+function folderPath(folder) {
+  const parts = [folder.name];
+  let current = folder;
+  while (current.parentId) {
+    current = state.folders.find((f) => f.id === current.parentId);
+    if (!current) break;
+    parts.unshift(current.name);
+  }
+  return parts.join(" / ");
+}
+
+let folderPickerOnConfirm = null;
+
+function openFolderPicker(onConfirm) {
+  folderPickerOnConfirm = onConfirm;
+  const options = state.folders
+    .map((f) => `<option value="${f.id}">${escapeHtml(folderPath(f))}</option>`)
+    .join("");
+  el.folderPickerSelect.innerHTML = `<option value="">Unfiled (root)</option>${options}`;
+  el.folderPickerStatus.textContent = "";
+  el.folderPickerModal.hidden = false;
+}
+
+function closeFolderPicker() {
+  el.folderPickerModal.hidden = true;
+  folderPickerOnConfirm = null;
+}
+
+el.folderPickerClose.addEventListener("click", closeFolderPicker);
+el.folderPickerCancel.addEventListener("click", closeFolderPicker);
+el.folderPickerModal.addEventListener("click", (event) => {
+  if (event.target === el.folderPickerModal) closeFolderPicker();
+});
+
+el.folderPickerConfirm.addEventListener("click", async () => {
+  const folderId = el.folderPickerSelect.value || null;
+  if (!folderPickerOnConfirm) return;
+  el.folderPickerStatus.textContent = "Moving…";
+  try {
+    await folderPickerOnConfirm(folderId);
+    closeFolderPicker();
+  } catch (err) {
+    el.folderPickerStatus.textContent = `Error: ${err.message}`;
   }
 });
 
