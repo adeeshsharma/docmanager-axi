@@ -41,6 +41,14 @@ Usage:
                                        Change a tracked document's synthetic path, keeping its full history
   docmanager families tags <id> [--set "a,b"] [--add <tag>] [--remove <tag>]
                                        View or change a family's tags (no flags shows current tags)
+  docmanager folders create <name> [--parent <id>]
+                                       Create a folder, optionally nested under an existing one
+  docmanager folders list             Show the folder tree
+  docmanager folders rename <id> <newName>
+                                       Rename a folder in place
+  docmanager folders move <id> [--parent <id>]
+                                       Move a folder under a different parent (omit --parent for root)
+  docmanager folders delete <id>      Delete an empty folder (refuses if it still has anything inside)
   docmanager status                   Reconcile and show current tracked state
   docmanager search <query>           Keyword search over tracked documents' titles and text (current
                                        version only, not semantic search)
@@ -132,6 +140,8 @@ const ERROR_SUGGESTIONS = {
   PUSH_REJECTED: ["Run `docmanager snapshot pull` first, then push again"],
   SYNC_CONFLICT: ["Resolve the conflict directly with git in ~/.docmanager/store, then pull again"],
   PRIVACY_NOT_ACKNOWLEDGED: ["Run `docmanager snapshot push --acknowledge-privacy` to proceed"],
+  FOLDER_NOT_FOUND: ["Run `docmanager folders list` to see valid folder ids"],
+  FOLDER_NOT_EMPTY: ["Move its contents out first (`docmanager families move <id> --to-folder <otherId>` or `docmanager folders move <childId>`), then delete again"],
   SSH_AUTH_FAILED: ["Run `docmanager setup ssh` to check your SSH key setup for this remote"],
   CLONE_FAILED: ["Run `docmanager setup ssh` if this is an SSH remote, or check the URL and your network connection"],
   FETCH_FAILED: ["Run `docmanager setup ssh` if this is an SSH remote, or check the URL and your network connection"],
@@ -631,6 +641,110 @@ async function familiesCommand(args) {
   return result;
 }
 
+async function foldersCommand(args) {
+  const [sub, id] = args;
+
+  if (sub === "create") {
+    const name = args[1];
+    const { flags } = parseFlags(args.slice(2), ["parent"]);
+    if (!name) {
+      throw new AxiError("name is required", "VALIDATION_ERROR", ["docmanager folders create <name> [--parent <id>]"]);
+    }
+    let folder;
+    try {
+      ({ folder } = await coreClient.createFolder(name, flags.parent ?? null));
+    } catch (err) {
+      throw toAxiError(err);
+    }
+    return {
+      created: folder.name,
+      id: folder.id,
+      help: ["Run `docmanager folders list` to see the full tree"],
+    };
+  }
+
+  if (sub === "rename") {
+    const newName = args[2];
+    if (!id || !newName) {
+      throw new AxiError("id and newName are both required", "VALIDATION_ERROR", [
+        "docmanager folders rename <id> <newName>",
+      ]);
+    }
+    let changed, folder;
+    try {
+      ({ changed, folder } = await coreClient.renameFolder(id, newName));
+    } catch (err) {
+      throw toAxiError(err);
+    }
+    return {
+      renamed: changed,
+      ...(changed ? {} : { note: "already has this name, no changes made" }),
+      folder: { id: folder.id, name: folder.name },
+    };
+  }
+
+  if (sub === "move") {
+    const { flags } = parseFlags(args.slice(1), ["parent"]);
+    if (!id) {
+      throw new AxiError("id is required", "VALIDATION_ERROR", ["docmanager folders move <id> [--parent <id>]"]);
+    }
+    let changed, folder;
+    try {
+      ({ changed, folder } = await coreClient.moveFolder(id, flags.parent ?? null));
+    } catch (err) {
+      throw toAxiError(err);
+    }
+    return {
+      moved: changed,
+      ...(changed ? {} : { note: "already at this location, no changes made" }),
+      folder: { id: folder.id, name: folder.name, parentId: folder.parentId },
+    };
+  }
+
+  if (sub === "delete") {
+    if (!id) {
+      throw new AxiError("id is required", "VALIDATION_ERROR", ["docmanager folders delete <id>"]);
+    }
+    let folder;
+    try {
+      ({ folder } = await coreClient.deleteFolder(id));
+    } catch (err) {
+      throw toAxiError(err);
+    }
+    return { deleted: folder.name };
+  }
+
+  if (sub !== undefined && sub !== "list") {
+    throw new AxiError(`Unknown folders command: ${sub}`, "VALIDATION_ERROR", [
+      "docmanager folders create <name> [--parent <id>]",
+      "docmanager folders list",
+      "docmanager folders rename <id> <newName>",
+      "docmanager folders move <id> [--parent <id>]",
+      "docmanager folders delete <id>",
+    ]);
+  }
+
+  const { folders } = await coreClient.listFolders();
+  if (folders.length === 0) {
+    return { folders: "0 folders", help: ["Run `docmanager folders create <name>` to create one"] };
+  }
+  const byParent = new Map();
+  for (const f of folders) {
+    const key = f.parentId ?? "root";
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(f);
+  }
+  const lines = [];
+  function walk(parentKey, depth) {
+    for (const f of byParent.get(parentKey) ?? []) {
+      lines.push(`${"  ".repeat(depth)}${f.name} (${f.id})`);
+      walk(f.id, depth + 1);
+    }
+  }
+  walk("root", 0);
+  return { tree: lines };
+}
+
 async function statusCommand() {
   return familiesCommand([]);
 }
@@ -1000,6 +1114,7 @@ export async function main() {
       untrack: untrackCommand,
       link: linkCommand,
       families: familiesCommand,
+      folders: foldersCommand,
       status: statusCommand,
       settings: settingsCommand,
       snapshot: snapshotCommand,

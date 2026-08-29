@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { VERSION } from "../version.js";
 import { trackPaths, untrackFamilies, renameTrackedDocument } from "./track.js";
 import { mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags } from "./store.js";
+import { listFolders, getFolder, createFolder, renameFolder, reparentFolder, deleteFolder } from "./folders.js";
 import { diffVersions, renderHighlightedContent } from "./diff.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex, searchFamilies } from "./index.js";
 import { reconcile } from "./reconcile.js";
@@ -44,6 +45,9 @@ const CLIENT_ERROR_CODES = new Set([
   "BAD_REQUEST",
   "PRIVACY_NOT_ACKNOWLEDGED",
   "NOTHING_TO_CLEAN",
+  "FOLDER_NOT_FOUND",
+  "FOLDER_NOT_EMPTY",
+  "FOLDER_CYCLE",
 ]);
 
 function statusForError(err) {
@@ -209,6 +213,56 @@ const ROUTES = [
       rebuildIndex();
       broadcast("families-changed");
       return { status: 200, body: { family: getFamilyFromIndex(match[1]) } };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/folders$/,
+    handler: async () => ({ status: 200, body: { folders: listFolders() } }),
+  },
+  {
+    method: "POST",
+    pattern: /^\/folders$/,
+    handler: async (req) => {
+      const body = await readJsonBody(req);
+      if (!body.name || typeof body.name !== "string") {
+        return { status: 400, body: { error: "name is required" } };
+      }
+      const folder = await createFolder({ name: body.name, parentId: body.parentId ?? null });
+      broadcast("families-changed");
+      return { status: 200, body: { folder } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/folders\/([^/]+)\/rename$/,
+    handler: async (req, match) => {
+      const body = await readJsonBody(req);
+      if (!body.name || typeof body.name !== "string") {
+        return { status: 400, body: { error: "name is required" } };
+      }
+      const { changed, folder } = await renameFolder(match[1], body.name);
+      if (changed) broadcast("families-changed");
+      return { status: 200, body: { changed, folder } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/folders\/([^/]+)\/move$/,
+    handler: async (req, match) => {
+      const body = await readJsonBody(req);
+      const { changed, folder } = await reparentFolder(match[1], body.parentId ?? null);
+      if (changed) broadcast("families-changed");
+      return { status: 200, body: { changed, folder } };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/folders\/([^/]+)$/,
+    handler: async (req, match) => {
+      const folder = await deleteFolder(match[1]);
+      broadcast("families-changed");
+      return { status: 200, body: { folder } };
     },
   },
   {
