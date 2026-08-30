@@ -1,7 +1,34 @@
-import { readFileSync, realpathSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, realpathSync, existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { basename, extname, join, relative, sep } from "node:path";
 import { createFamily, getFamily, findFamilyBySyntheticPath, deleteFamily, renameFamily } from "./store.js";
-import { addMapping, findByRealPath, removeMappingByFamilyId, updateMappingSyntheticPath } from "./local-state.js";
+import {
+  addMapping,
+  findByRealPath,
+  listMappings,
+  removeMapping,
+  removeMappingByFamilyId,
+  updateMappingSyntheticPath,
+} from "./local-state.js";
+import { editDir } from "./paths.js";
+
+// Every Lavish edit-and-relink cycle (ARCHITECTURE.md section 5) materializes
+// a NEW working file under editDir(), named after the pre-edit hash, then
+// relinks it as this family's live mapping. Nothing else ever writes here, so
+// a mapping whose realPath lives inside this directory is always a
+// single-use Lavish scratch copy (paths.js's own "disposable scratch files"),
+// never a second genuine real-world tracked location - unlike the original
+// tracked file, which stays a legitimate, permanent mapping even after a
+// relink (the user may still be editing it directly, independent of Lavish).
+function isEditDirPath(realPath) {
+  // realPath (both the mapping's own and the one just resolved in trackPath
+  // below) always comes from realpathSync(), which expands symlinks - on
+  // Mac in particular, tmpdir()-rooted paths resolve to a "/private/..."
+  // prefix that editDir()'s own raw DOCMANAGER_HOME-based path doesn't carry
+  // unless it's resolved the same way. Comparing an unresolved editDir()
+  // against an already-resolved realPath would silently never match.
+  const dir = existsSync(editDir()) ? realpathSync(editDir()) : editDir();
+  return realPath === dir || realPath.startsWith(dir + sep);
+}
 
 export function defaultSyntheticPath(realPath) {
   const base = basename(realPath, extname(realPath));
@@ -58,6 +85,26 @@ export async function trackPath(inputPath, { as, relink } = {}) {
         headCreatedAt: existingFamily.versions[existingFamily.headVersion]?.createdAt ?? null,
       };
       throw err;
+    }
+    // Relinking to a new Lavish scratch copy retires this family's PREVIOUS
+    // scratch copy, if any - otherwise every completed edit session leaves
+    // its now-dead working file permanently mapped, and deleteVersion()'s
+    // "is this content still live" check (store.js) treats that abandoned
+    // file as though it were still the document's current state forever,
+    // blocking deletion of a version that has long since been superseded.
+    // Only editDir() mappings are retired here; a genuine second real-world
+    // location for this family (e.g. its original tracked file) is left
+    // alone; see isEditDirPath()'s own comment above.
+    if (isEditDirPath(realPath)) {
+      for (const stale of listMappings()) {
+        if (stale.familyId !== existingFamily.id || !isEditDirPath(stale.realPath)) continue;
+        removeMapping(stale.realPath);
+        try {
+          unlinkSync(stale.realPath);
+        } catch {
+          // Best-effort - the scratch file may already be gone.
+        }
+      }
     }
     addMapping({ syntheticPath, realPath, familyId: existingFamily.id });
     return { family: existingFamily, alreadyTracked: false, relinked: true };

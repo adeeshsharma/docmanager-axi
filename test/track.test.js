@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { useIsolatedHome, cleanupHome } from "./helpers.js";
 import { trackPath, trackPaths, untrackFamilies, defaultSyntheticPath } from "../src/core/track.js";
-import { getFamily } from "../src/core/store.js";
+import { getFamily, deleteVersion } from "../src/core/store.js";
+import { reconcile } from "../src/core/reconcile.js";
+import { listMappings } from "../src/core/local-state.js";
+import { editDir } from "../src/core/paths.js";
+import { editFileName } from "../src/cli/lavish.js";
+import { existsSync } from "node:fs";
 
 let homeDir;
 let fixtureDir;
@@ -122,6 +127,46 @@ test("trackPath's FAMILY_PATH_EXISTS error carries the real colliding family's i
     assert.ok(err.existingFamily.headCreatedAt, "should include when the head version was created");
     return true;
   });
+});
+
+test("relinking a new Lavish scratch copy retires the previous one, so a superseded version isn't blocked from deletion forever", async () => {
+  const filePath = writeHtml("report.html", "<html><body>v1</body></html>");
+  const { family } = await trackPath(filePath, { as: "/report" });
+  const v1 = family.headVersion;
+
+  // Session 1: export v1 to a scratch working file, edit it, relink+reconcile
+  // - the exact sequence `docmanager families lavish` + `track --relink` +
+  // `status` produces per ARCHITECTURE.md section 5.
+  mkdirSync(editDir(), { recursive: true });
+  const editFile1 = join(editDir(), editFileName("/report", v1));
+  writeFileSync(editFile1, "<html><body>v2 from session 1</body></html>");
+  await trackPath(editFile1, { as: "/report", relink: true });
+  await reconcile();
+  const v2 = getFamily(family.id).headVersion;
+  assert.notEqual(v2, v1);
+
+  // Session 2: a later Lavish session exports v2, edits it, relinks again.
+  const editFile2 = join(editDir(), editFileName("/report", v2));
+  writeFileSync(editFile2, "<html><body>v3 from session 2</body></html>");
+  await trackPath(editFile2, { as: "/report", relink: true });
+  await reconcile();
+  const v3 = getFamily(family.id).headVersion;
+  assert.notEqual(v3, v2);
+
+  // Session 1's scratch file is retired: unmapped and removed from disk,
+  // since it will never be touched again - only the original tracked file
+  // and session 2's scratch copy remain live mappings for this family.
+  const mappings = listMappings().filter((m) => m.familyId === family.id);
+  assert.equal(mappings.length, 2, "original file + latest scratch copy only");
+  assert.ok(!mappings.some((m) => m.realPath === editFile1), "session 1's mapping must be gone");
+  assert.ok(!existsSync(editFile1), "session 1's scratch file must be deleted from disk");
+
+  // v2 is fully superseded by v3 and no live mapping holds its content
+  // anymore, so it must now be deletable - this was the actual bug: the
+  // abandoned session-1 mapping used to make deleteVersion think v2's
+  // content (which happened to equal what it exported) was still live.
+  const updated = await deleteVersion(family.id, v2);
+  assert.equal(updated.versions[v2], undefined);
 });
 
 test("trackPaths surfaces existingFamily on each per-path collision result, not just the batch-level error", async () => {
