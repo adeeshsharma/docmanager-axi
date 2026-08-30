@@ -1,0 +1,34 @@
+{
+  "context/projectBrief.md": {
+    "lastUpdated": "2026-08-29T16:35:50.603Z",
+    "summary": "Brownfield import from src/ui/index.html"
+  },
+  "technical/architecture.md": {
+    "lastUpdated": "2026-08-29T16:35:50.599Z",
+    "summary": "Brownfield import from docs/superpowers/specs/2026-08-29-folders-design.md"
+  },
+  "context/activeContext.md": {
+    "lastUpdated": "2026-08-30T15:29:29.130Z",
+    "summary": "Rewrote Current Focus/Next steps for the folders feature and the Memory Intel fixes; corrected a stale 'no rendering tool available' note in Things a fresh session must NOT assume."
+  },
+  "business/productContext.md": {
+    "lastUpdated": "2026-08-29T16:35:50.600Z",
+    "summary": "Brownfield import from memory-bank/productContext.md"
+  },
+  "context/progress.md": {
+    "lastUpdated": "2026-08-30T15:29:29.127Z",
+    "summary": "A real, upstream-fixed reliability gap in the project's own memory tooling, found and resolved this session - worth recording as a real decision/incident, not just a housekeeping note."
+  },
+  "technical/patterns.md": {
+    "lastUpdated": "2026-08-29T16:35:50.602Z",
+    "summary": "Brownfield import from memory-bank/systemPatterns.md"
+  },
+  "technical/techContext.md": {
+    "lastUpdated": "2026-08-29T16:35:50.602Z",
+    "summary": "Brownfield import from memory-bank/techContext.md"
+  },
+  "context/currentMentalModel.md": {
+    "lastUpdated": "2026-08-30T15:29:29.124Z",
+    "summary": "Whole-file replace after a major feature (folders) shipped and the project's own memory tooling was fixed - stale since migration import."
+  }
+}

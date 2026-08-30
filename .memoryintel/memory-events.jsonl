@@ -1,0 +1,21 @@
+{"timestamp":"2026-08-29T16:35:50.596Z","type":"memory-update","summary":"Brownfield import from AGENTS.md","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.597Z","type":"memory-update","summary":"Brownfield import from ARCHITECTURE.md","affectedFiles":["technical/architecture.md"]}
+{"timestamp":"2026-08-29T16:35:50.597Z","type":"memory-update","summary":"Brownfield import from CHANGELOG.md","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.598Z","type":"memory-update","summary":"Brownfield import from CONTRIBUTING.md","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.598Z","type":"memory-update","summary":"Brownfield import from README.md","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.598Z","type":"memory-update","summary":"Brownfield import from RELEASING.md","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.599Z","type":"memory-update","summary":"Brownfield import from docs/agent-native-explained.html","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.599Z","type":"memory-update","summary":"Brownfield import from docs/superpowers/specs/2026-08-29-folders-design.md","affectedFiles":["technical/architecture.md"]}
+{"timestamp":"2026-08-29T16:35:50.599Z","type":"memory-update","summary":"Brownfield import from docs/understanding-docmanager-axi.html","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.600Z","type":"memory-update","summary":"Brownfield import from memory-bank/activeContext.md","affectedFiles":["context/activeContext.md"]}
+{"timestamp":"2026-08-29T16:35:50.600Z","type":"memory-update","summary":"Brownfield import from memory-bank/productContext.md","affectedFiles":["business/productContext.md"]}
+{"timestamp":"2026-08-29T16:35:50.601Z","type":"memory-update","summary":"Brownfield import from memory-bank/progress.md","affectedFiles":["context/progress.md"]}
+{"timestamp":"2026-08-29T16:35:50.601Z","type":"memory-update","summary":"Brownfield import from memory-bank/projectbrief.md","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.602Z","type":"memory-update","summary":"Brownfield import from memory-bank/systemPatterns.md","affectedFiles":["technical/patterns.md"]}
+{"timestamp":"2026-08-29T16:35:50.602Z","type":"memory-update","summary":"Brownfield import from memory-bank/techContext.md","affectedFiles":["technical/techContext.md"]}
+{"timestamp":"2026-08-29T16:35:50.603Z","type":"memory-update","summary":"Brownfield import from skills/docmanager/SKILL.md","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-29T16:35:50.603Z","type":"memory-update","summary":"Brownfield import from src/ui/index.html","affectedFiles":["context/projectBrief.md"]}
+{"timestamp":"2026-08-30T15:22:55.098Z","type":"session-load","summary":"Loaded 2 file(s)","affectedFiles":["context/currentMentalModel.md","context/activeContext.md"],"domain":null,"totalChars":130403,"totalLines":266}
+{"timestamp":"2026-08-30T15:29:29.125Z","type":"memory-update","summary":"Whole-file replace after a major feature (folders) shipped and the project's own memory tooling was fixed - stale since migration import.","affectedFiles":["context/currentMentalModel.md"]}
+{"timestamp":"2026-08-30T15:29:29.126Z","type":"memory-update","summary":"Real feature shipped end to end (10-task plan, PR #8, released as v1.2.0) - never recorded, since memory was never updated during the worktree session that built it.","affectedFiles":["context/progress.md"]}
+{"timestamp":"2026-08-30T15:29:29.127Z","type":"memory-update","summary":"A real, upstream-fixed reliability gap in the project's own memory tooling, found and resolved this session - worth recording as a real decision/incident, not just a housekeeping note.","affectedFiles":["context/progress.md"]}
