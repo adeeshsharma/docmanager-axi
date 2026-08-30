@@ -27,6 +27,7 @@ const el = {
   familyList: document.getElementById("family-list"),
   familyListLabel: document.getElementById("family-list-label"),
   newFolderButton: document.getElementById("new-folder-button"),
+  folderContextMenu: document.getElementById("folder-context-menu"),
   bulkMoveButton: document.getElementById("bulk-move-button"),
   folderPickerModal: document.getElementById("folder-picker-modal"),
   folderPickerClose: document.getElementById("folder-picker-close"),
@@ -317,7 +318,7 @@ function wireFolderTreeItems() {
       event.stopPropagation();
       const folderId = button.dataset.folderId;
       const folder = state.folders.find((f) => f.id === folderId);
-      handleFolderMenu(folderId, folder?.name ?? "");
+      openFolderContextMenu(folderId, folder?.name ?? "", button);
     });
   }
 }
@@ -839,47 +840,90 @@ el.newFolderButton.addEventListener("click", async () => {
   }
 });
 
-async function handleFolderMenu(folderId, folderName) {
-  const action = window.prompt(
-    `"${folderName}" - type one of: subfolder, rename, delete`,
-  );
-  if (!action) return;
-  const normalized = action.trim().toLowerCase();
+async function createSubfolder(folderId) {
+  const name = window.prompt("New subfolder name:");
+  if (!name || !name.trim()) return;
+  try {
+    await api("POST", "/folders", { name: name.trim(), parentId: folderId });
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not create subfolder: ${err.message}`);
+  }
+}
 
-  if (normalized === "subfolder") {
-    const name = window.prompt("New subfolder name:");
-    if (!name || !name.trim()) return;
-    try {
-      await api("POST", "/folders", { name: name.trim(), parentId: folderId });
-      refreshDocuments();
-    } catch (err) {
-      window.alert(`Could not create subfolder: ${err.message}`);
-    }
+async function renameFolderPrompt(folderId, folderName) {
+  const newName = window.prompt("Rename folder to:", folderName);
+  if (!newName || !newName.trim() || newName.trim() === folderName) return;
+  try {
+    await api("POST", `/folders/${folderId}/rename`, { name: newName.trim() });
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not rename folder: ${err.message}`);
+  }
+}
+
+async function deleteFolderPrompt(folderId, folderName) {
+  const confirmed = window.confirm(`Delete "${folderName}"? This only works if it's empty - nothing inside is ever deleted automatically.`);
+  if (!confirmed) return;
+  try {
+    await api("DELETE", `/folders/${folderId}`);
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not delete folder: ${err.message}`);
+  }
+}
+
+// A real popover menu (role="menu"/"menuitem") replacing an earlier
+// type-the-action-name window.prompt - one shared element reused for
+// whichever folder's "..." was last clicked, positioned against that
+// button's own bounding rect rather than centered like the modals above.
+let openContextMenuFolderId = null;
+
+function closeFolderContextMenu() {
+  el.folderContextMenu.hidden = true;
+  openContextMenuFolderId = null;
+  document.removeEventListener("click", onDocumentClickCloseContextMenu);
+  document.removeEventListener("keydown", onContextMenuKeydown);
+}
+
+function onDocumentClickCloseContextMenu(event) {
+  if (!el.folderContextMenu.contains(event.target)) closeFolderContextMenu();
+}
+
+function onContextMenuKeydown(event) {
+  if (event.key === "Escape") closeFolderContextMenu();
+}
+
+function openFolderContextMenu(folderId, folderName, anchorEl) {
+  if (openContextMenuFolderId === folderId) {
+    closeFolderContextMenu();
     return;
   }
+  openContextMenuFolderId = folderId;
+  el.folderContextMenu.dataset.folderId = folderId;
+  el.folderContextMenu.dataset.folderName = folderName;
+  const rect = anchorEl.getBoundingClientRect();
+  el.folderContextMenu.style.top = `${rect.bottom + 4}px`;
+  el.folderContextMenu.style.left = `${rect.left}px`;
+  el.folderContextMenu.hidden = false;
+  // Deferred one tick so the same click that opened the menu doesn't
+  // immediately trigger the document-level listener that closes it.
+  setTimeout(() => {
+    document.addEventListener("click", onDocumentClickCloseContextMenu);
+    document.addEventListener("keydown", onContextMenuKeydown);
+  }, 0);
+}
 
-  if (normalized === "rename") {
-    const newName = window.prompt("Rename folder to:", folderName);
-    if (!newName || !newName.trim() || newName.trim() === folderName) return;
-    try {
-      await api("POST", `/folders/${folderId}/rename`, { name: newName.trim() });
-      refreshDocuments();
-    } catch (err) {
-      window.alert(`Could not rename folder: ${err.message}`);
-    }
-    return;
-  }
-
-  if (normalized === "delete") {
-    const confirmed = window.confirm(`Delete "${folderName}"? This only works if it's empty - nothing inside is ever deleted automatically.`);
-    if (!confirmed) return;
-    try {
-      await api("DELETE", `/folders/${folderId}`);
-      refreshDocuments();
-    } catch (err) {
-      window.alert(`Could not delete folder: ${err.message}`);
-    }
-  }
+for (const item of el.folderContextMenu.querySelectorAll(".context-menu-item")) {
+  item.addEventListener("click", () => {
+    const folderId = el.folderContextMenu.dataset.folderId;
+    const folderName = el.folderContextMenu.dataset.folderName;
+    const action = item.dataset.action;
+    closeFolderContextMenu();
+    if (action === "subfolder") createSubfolder(folderId);
+    if (action === "rename") renameFolderPrompt(folderId, folderName);
+    if (action === "delete") deleteFolderPrompt(folderId, folderName);
+  });
 }
 
 el.moveToFolderButton.addEventListener("click", () => {
