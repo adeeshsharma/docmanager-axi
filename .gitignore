@@ -3,13 +3,13 @@ dist/
 *.log
 .DS_Store
 
-# Local development process docs - not part of the public project. memory-bank/
-# is a running session journal for coding agents working in this exact local
-# checkout; docs/ is the teaching doc generated for the project owner, not
-# end-user documentation. AGENTS.md/CLAUDE.md brief an agent working in this
-# exact local checkout - same reasoning, matching reactive-axi's own setup.
-# None of these are meant to ship with the public repo.
-memory-bank/
+# Local development process docs - not part of the public project. docs/ is
+# the teaching doc generated for the project owner, not end-user
+# documentation. AGENTS.md/CLAUDE.md brief an agent working in this exact
+# local checkout - same reasoning, matching reactive-axi's own setup. Neither
+# is meant to ship with the public repo. (memory-bank/ used to be listed here
+# too - retired 2026-08-29 in favor of Memory Intel, whose .memoryintel/ is
+# deliberately git-committed, not ignored.)
 docs/
 AGENTS.md
 CLAUDE.md

@@ -279,7 +279,7 @@ body {
 
 /* Distilled from the app's own version-chip shape (three stacked bars, most
    recent brightest) rather than a generic document/folder glyph - see
-   memory-bank/activeContext.md for the design round that got here. */
+   .memoryintel/context/activeContext.md for the design round that got here. */
 .brand-mark {
   display: flex;
   align-items: center;
