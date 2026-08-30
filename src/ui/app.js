@@ -1,5 +1,6 @@
 const state = {
   families: [],
+  folders: [],
   suggestedLinks: [],
   searchResults: null, // null = showing the normal tracked-document list, an array = showing search results
   selectedId: null,
@@ -7,6 +8,7 @@ const state = {
   viewingHash: null, // which version is currently loaded in the reading frame
   lastKnownHeadVersion: null, // headVersion as of the last time we synced with the server
   bulkSelectedIds: new Set(), // family ids checked for bulk actions, persists across list re-renders
+  expandedFolderIds: new Set(), // folder ids currently expanded in the sidebar tree, persists across re-renders
 };
 
 // Bumped by every selectFamily() call. A concurrent background refresh
@@ -24,6 +26,16 @@ const el = {
   viewSettings: document.getElementById("view-settings"),
   familyList: document.getElementById("family-list"),
   familyListLabel: document.getElementById("family-list-label"),
+  newFolderButton: document.getElementById("new-folder-button"),
+  folderContextMenu: document.getElementById("folder-context-menu"),
+  bulkMoveButton: document.getElementById("bulk-move-button"),
+  folderPickerModal: document.getElementById("folder-picker-modal"),
+  folderPickerClose: document.getElementById("folder-picker-close"),
+  folderPickerSubject: document.getElementById("folder-picker-subject"),
+  folderPickerList: document.getElementById("folder-picker-list"),
+  folderPickerCancel: document.getElementById("folder-picker-cancel"),
+  folderPickerStatus: document.getElementById("folder-picker-status"),
+  moveToFolderButton: document.getElementById("move-to-folder-button"),
   bulkActionsBar: document.getElementById("bulk-actions-bar"),
   bulkActionsCount: document.getElementById("bulk-actions-count"),
   bulkUntrackButton: document.getElementById("bulk-untrack-button"),
@@ -64,6 +76,7 @@ const el = {
   tokenStatus: document.getElementById("token-status"),
   checkSshButton: document.getElementById("check-ssh-button"),
   sshCheckOutput: document.getElementById("ssh-check-output"),
+  sidebarToggle: document.getElementById("sidebar-toggle"),
   themeSystem: document.getElementById("theme-system"),
   themeLight: document.getElementById("theme-light"),
   themeDark: document.getElementById("theme-dark"),
@@ -115,6 +128,11 @@ function highlightSnippet(text) {
 const DOC_ICON =
   '<svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M5 2.5h7l3.5 3.5V17a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 2.5V6h3.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
 
+const FOLDER_ICON =
+  '<svg viewBox="0 0 20 20" fill="none" width="16" height="16"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.5 2h7.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+const CHEVRON_ICON =
+  '<svg viewBox="0 0 16 16" fill="none" width="10" height="10" class="chevron"><path d="M5 3l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 // Maps each family id to the OTHER synthetic paths a cheap heuristic (title
 // or structural match, see suggest.js) thinks it might be the same document
 // as - suggestion-only, never acted on automatically, so this only ever
@@ -140,9 +158,8 @@ function renderSearchResults() {
   const items = state.searchResults
     .map((r) => {
       const isSelected = r.id === state.selectedId;
-      const selected = isSelected ? " selected" : "";
       const checked = state.bulkSelectedIds.has(r.id) ? " checked" : "";
-      return `<li class="${selected.trim()}" data-id="${r.id}" role="button" tabindex="0" aria-current="${isSelected}">
+      return `<li class="family-row${isSelected ? " selected" : ""}" data-id="${r.id}" role="button" tabindex="0" aria-current="${isSelected}">
         <input type="checkbox" class="family-select" data-id="${r.id}"${checked} aria-label="Select for bulk actions" />
         ${DOC_ICON}
         <div class="item-text">
@@ -162,39 +179,86 @@ function renderFamilyList() {
     return;
   }
   el.familyListLabel.textContent = "Tracked documents";
+  renderFamilyTree();
+}
 
-  if (state.families.length === 0) {
+function buildFolderTree() {
+  const byParent = new Map();
+  for (const folder of state.folders) {
+    const key = folder.parentId ?? "root";
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(folder);
+  }
+  const familiesByFolder = new Map();
+  for (const family of state.families) {
+    const key = family.folderId ?? "root";
+    if (!familiesByFolder.has(key)) familiesByFolder.set(key, []);
+    familiesByFolder.get(key).push(family);
+  }
+  return { byParent, familiesByFolder };
+}
+
+function renderFamilyRow(family, duplicates) {
+  const isSelected = family.id === state.selectedId;
+  const checked = state.bulkSelectedIds.has(family.id) ? " checked" : "";
+  const otherPaths = duplicates.get(family.id);
+  const dupBadge = otherPaths
+    ? `<span class="dup-badge" title="Possibly the same document as ${escapeHtml(otherPaths.join(", "))}">possible duplicate</span>`
+    : "";
+  const tagBadges = (family.tags ?? [])
+    .map((t) => `<span class="tag-chip tag-chip-small">${escapeHtml(t)}</span>`)
+    .join("");
+  return `<li class="family-row${isSelected ? " selected" : ""}" data-id="${family.id}" role="button" tabindex="0" aria-current="${isSelected}">
+    <input type="checkbox" class="family-select" data-id="${family.id}"${checked} aria-label="Select for bulk actions" />
+    ${DOC_ICON}
+    <div class="item-text">
+      <div class="path">${escapeHtml(family.syntheticPath)}</div>
+      <div class="meta">${family.versionCount} version${family.versionCount === 1 ? "" : "s"}${dupBadge}${tagBadges}</div>
+    </div>
+  </li>`;
+}
+
+function renderFolderNode(folder, tree, duplicates, depth) {
+  const isExpanded = state.expandedFolderIds.has(folder.id);
+  const childFolders = tree.byParent.get(folder.id) ?? [];
+  const childFamilies = tree.familiesByFolder.get(folder.id) ?? [];
+  const childCount = childFolders.length + childFamilies.length;
+  const childrenHtml = isExpanded
+    ? `<ul class="folder-children">
+        ${childFolders.map((f) => renderFolderNode(f, tree, duplicates, depth + 1)).join("")}
+        ${childFamilies.map((f) => renderFamilyRow(f, duplicates)).join("")}
+      </ul>`
+    : "";
+  return `<li class="folder-row" data-folder-id="${folder.id}" style="--depth: ${depth}">
+    <div class="folder-header" role="button" tabindex="0" aria-expanded="${isExpanded}">
+      <span class="chevron-wrap${isExpanded ? " expanded" : ""}">${CHEVRON_ICON}</span>
+      ${FOLDER_ICON}
+      <span class="folder-name">${escapeHtml(folder.name)}</span>
+      <span class="meta">${childCount}</span>
+      <button type="button" class="icon-button folder-menu-button" data-folder-id="${folder.id}" title="Folder actions" aria-label="Folder actions">⋯</button>
+    </div>
+    ${childrenHtml}
+  </li>`;
+}
+
+function renderFamilyTree() {
+  if (state.families.length === 0 && state.folders.length === 0) {
     el.familyList.innerHTML = '<p class="empty">Nothing tracked yet.</p>';
     return;
   }
 
   const duplicates = possibleDuplicatesByFamilyId();
+  const tree = buildFolderTree();
+  const rootFolders = tree.byParent.get("root") ?? [];
+  const rootFamilies = tree.familiesByFolder.get("root") ?? [];
 
-  const items = state.families
-    .map((family) => {
-      const isSelected = family.id === state.selectedId;
-      const selected = isSelected ? " selected" : "";
-      const checked = state.bulkSelectedIds.has(family.id) ? " checked" : "";
-      const otherPaths = duplicates.get(family.id);
-      const dupBadge = otherPaths
-        ? `<span class="dup-badge" title="Possibly the same document as ${escapeHtml(otherPaths.join(", "))}">possible duplicate</span>`
-        : "";
-      const tagBadges = (family.tags ?? [])
-        .map((t) => `<span class="tag-chip tag-chip-small">${escapeHtml(t)}</span>`)
-        .join("");
-      return `<li class="${selected.trim()}" data-id="${family.id}" role="button" tabindex="0" aria-current="${isSelected}">
-        <input type="checkbox" class="family-select" data-id="${family.id}"${checked} aria-label="Select for bulk actions" />
-        ${DOC_ICON}
-        <div class="item-text">
-          <div class="path">${escapeHtml(family.syntheticPath)}</div>
-          <div class="meta">${family.versionCount} version${family.versionCount === 1 ? "" : "s"}${dupBadge}${tagBadges}</div>
-        </div>
-      </li>`;
-    })
-    .join("");
-
-  el.familyList.innerHTML = `<ul>${items}</ul>`;
+  const items = [
+    ...rootFolders.map((f) => renderFolderNode(f, tree, duplicates, 0)),
+    ...rootFamilies.map((f) => renderFamilyRow(f, duplicates)),
+  ].join("");
+  el.familyList.innerHTML = `<ul class="folder-tree">${items}</ul>`;
   wireFamilyListItems();
+  wireFolderTreeItems();
 }
 
 // Activates a row on Enter/Space the same way a real <button> would,
@@ -214,7 +278,7 @@ function onActivateKeydown(handler) {
 }
 
 function wireFamilyListItems() {
-  for (const li of el.familyList.querySelectorAll("li")) {
+  for (const li of el.familyList.querySelectorAll("li.family-row")) {
     li.addEventListener("click", () => selectFamily(li.dataset.id));
     li.addEventListener("keydown", onActivateKeydown(() => selectFamily(li.dataset.id)));
   }
@@ -232,6 +296,34 @@ function wireFamilyListItems() {
   }
 }
 
+function toggleFolderExpanded(folderId) {
+  if (state.expandedFolderIds.has(folderId)) {
+    state.expandedFolderIds.delete(folderId);
+  } else {
+    state.expandedFolderIds.add(folderId);
+  }
+  renderFamilyList();
+}
+
+function wireFolderTreeItems() {
+  for (const header of el.familyList.querySelectorAll(".folder-header")) {
+    const folderId = header.closest(".folder-row").dataset.folderId;
+    header.addEventListener("click", (event) => {
+      if (event.target.closest(".folder-menu-button")) return;
+      toggleFolderExpanded(folderId);
+    });
+    header.addEventListener("keydown", onActivateKeydown(() => toggleFolderExpanded(folderId)));
+  }
+  for (const button of el.familyList.querySelectorAll(".folder-menu-button")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const folderId = button.dataset.folderId;
+      const folder = state.folders.find((f) => f.id === folderId);
+      openFolderContextMenu(folderId, folder?.name ?? "", button);
+    });
+  }
+}
+
 function updateBulkActionsBar() {
   const count = state.bulkSelectedIds.size;
   el.bulkActionsBar.hidden = count === 0;
@@ -242,6 +334,17 @@ el.bulkClearButton.addEventListener("click", () => {
   state.bulkSelectedIds.clear();
   updateBulkActionsBar();
   renderFamilyList();
+});
+
+el.bulkMoveButton.addEventListener("click", () => {
+  const ids = [...state.bulkSelectedIds];
+  if (ids.length === 0) return;
+  openFolderPicker(async (folderId) => {
+    await api("POST", "/documents/move", { ids, folderId });
+    state.bulkSelectedIds.clear();
+    updateBulkActionsBar();
+    refreshDocuments();
+  }, `${ids.length} document${ids.length === 1 ? "" : "s"}`);
 });
 
 el.bulkUntrackButton.addEventListener("click", async () => {
@@ -270,7 +373,8 @@ el.bulkUntrackButton.addEventListener("click", async () => {
 function renderDetailHeader(family) {
   state.detailFamily = family; // cached so rename/tag actions always read the currently-shown family's own fresh data, not a possibly-stale state.families entry
   el.detailTitle.textContent = family.syntheticPath;
-  el.detailMeta.textContent = `${family.id} · tracked since ${formatDate(family.createdAt)}`;
+  const versionCount = family.versions.length;
+  el.detailMeta.textContent = `${versionCount} version${versionCount === 1 ? "" : "s"} · tracked since ${formatDate(family.createdAt)}`;
   renderTags(family.tags ?? []);
 }
 
@@ -523,8 +627,12 @@ el.versionBannerAction.addEventListener("click", () => {
 
 async function refreshDocuments() {
   try {
-    const { families, suggestedLinks } = await api("GET", "/families");
+    const [{ families, suggestedLinks }, { folders }] = await Promise.all([
+      api("GET", "/families"),
+      api("GET", "/folders"),
+    ]);
     state.families = families;
+    state.folders = folders;
     state.suggestedLinks = suggestedLinks ?? [];
     const stillTracked = new Set(families.map((f) => f.id));
     for (const id of state.bulkSelectedIds) {
@@ -624,6 +732,45 @@ el.themeDark.addEventListener("click", () => applyTheme("dark"));
 // script in <head> - only the button UI needs to catch up on load.
 updateThemeButtons(getStoredTheme());
 
+// Same pattern as the theme toggle just above: a pure client-side display
+// preference, never synced through /settings, applied before first paint
+// by its own anti-flash script in index.html's <head> so there's no flash
+// of an expanded sidebar before this catches up.
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "docmanager-sidebar-collapsed";
+
+function isSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function applySidebarCollapsed(collapsed) {
+  if (collapsed) {
+    document.documentElement.dataset.sidebarCollapsed = "true";
+  } else {
+    delete document.documentElement.dataset.sidebarCollapsed;
+  }
+  try {
+    if (collapsed) {
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, "true");
+    } else {
+      localStorage.removeItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    }
+  } catch {
+    // Applies for this page load regardless; it just won't persist.
+  }
+  el.sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  el.sidebarToggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+}
+
+el.sidebarToggle.addEventListener("click", () => applySidebarCollapsed(!isSidebarCollapsed()));
+
+// The attribute itself is already set (or not) by the anti-flash inline
+// script - only the button's own aria state needs to catch up on load.
+applySidebarCollapsed(isSidebarCollapsed());
+
 function switchView(view) {
   state.view = view;
   el.viewDocuments.hidden = view !== "documents";
@@ -721,6 +868,111 @@ el.stopCoreButton.addEventListener("click", async () => {
     // there is no response to read once the process has actually exited.
     el.stopCoreStatus.textContent = "Stopped. This page will no longer update.";
   }
+});
+
+el.newFolderButton.addEventListener("click", async () => {
+  const name = window.prompt("New folder name:");
+  if (!name || !name.trim()) return;
+  try {
+    await api("POST", "/folders", { name: name.trim() });
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not create folder: ${err.message}`);
+  }
+});
+
+async function createSubfolder(folderId) {
+  const name = window.prompt("New subfolder name:");
+  if (!name || !name.trim()) return;
+  try {
+    await api("POST", "/folders", { name: name.trim(), parentId: folderId });
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not create subfolder: ${err.message}`);
+  }
+}
+
+async function renameFolderPrompt(folderId, folderName) {
+  const newName = window.prompt("Rename folder to:", folderName);
+  if (!newName || !newName.trim() || newName.trim() === folderName) return;
+  try {
+    await api("POST", `/folders/${folderId}/rename`, { name: newName.trim() });
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not rename folder: ${err.message}`);
+  }
+}
+
+async function deleteFolderPrompt(folderId, folderName) {
+  const confirmed = window.confirm(`Delete "${folderName}"? This only works if it's empty - nothing inside is ever deleted automatically.`);
+  if (!confirmed) return;
+  try {
+    await api("DELETE", `/folders/${folderId}`);
+    refreshDocuments();
+  } catch (err) {
+    window.alert(`Could not delete folder: ${err.message}`);
+  }
+}
+
+// A real popover menu (role="menu"/"menuitem") replacing an earlier
+// type-the-action-name window.prompt - one shared element reused for
+// whichever folder's "..." was last clicked, positioned against that
+// button's own bounding rect rather than centered like the modals above.
+let openContextMenuFolderId = null;
+
+function closeFolderContextMenu() {
+  el.folderContextMenu.hidden = true;
+  openContextMenuFolderId = null;
+  document.removeEventListener("click", onDocumentClickCloseContextMenu);
+  document.removeEventListener("keydown", onContextMenuKeydown);
+}
+
+function onDocumentClickCloseContextMenu(event) {
+  if (!el.folderContextMenu.contains(event.target)) closeFolderContextMenu();
+}
+
+function onContextMenuKeydown(event) {
+  if (event.key === "Escape") closeFolderContextMenu();
+}
+
+function openFolderContextMenu(folderId, folderName, anchorEl) {
+  if (openContextMenuFolderId === folderId) {
+    closeFolderContextMenu();
+    return;
+  }
+  openContextMenuFolderId = folderId;
+  el.folderContextMenu.dataset.folderId = folderId;
+  el.folderContextMenu.dataset.folderName = folderName;
+  const rect = anchorEl.getBoundingClientRect();
+  el.folderContextMenu.style.top = `${rect.bottom + 4}px`;
+  el.folderContextMenu.style.left = `${rect.left}px`;
+  el.folderContextMenu.hidden = false;
+  // Deferred one tick so the same click that opened the menu doesn't
+  // immediately trigger the document-level listener that closes it.
+  setTimeout(() => {
+    document.addEventListener("click", onDocumentClickCloseContextMenu);
+    document.addEventListener("keydown", onContextMenuKeydown);
+  }, 0);
+}
+
+for (const item of el.folderContextMenu.querySelectorAll(".context-menu-item")) {
+  item.addEventListener("click", () => {
+    const folderId = el.folderContextMenu.dataset.folderId;
+    const folderName = el.folderContextMenu.dataset.folderName;
+    const action = item.dataset.action;
+    closeFolderContextMenu();
+    if (action === "subfolder") createSubfolder(folderId);
+    if (action === "rename") renameFolderPrompt(folderId, folderName);
+    if (action === "delete") deleteFolderPrompt(folderId, folderName);
+  });
+}
+
+el.moveToFolderButton.addEventListener("click", () => {
+  if (!state.selectedId) return;
+  openFolderPicker(async (folderId) => {
+    await api("POST", `/families/${state.selectedId}/move`, { folderId });
+    refreshDocuments();
+  }, state.detailFamily?.syntheticPath ?? "");
 });
 
 el.renameButton.addEventListener("click", async () => {
@@ -842,6 +1094,72 @@ el.revertButton.addEventListener("click", async () => {
   } catch (err) {
     window.alert(`Could not revert: ${err.message}`);
   }
+});
+
+// Depth-first tree order (root folders first, each one's own children right
+// after it), reusing the exact same parent/child map the sidebar tree
+// itself builds from state.folders - one shared traversal, not a second,
+// slightly-different implementation of "walk the folder hierarchy."
+function flattenFoldersForPicker() {
+  const tree = buildFolderTree();
+  const result = [];
+  function walk(parentKey, depth) {
+    for (const folder of tree.byParent.get(parentKey) ?? []) {
+      result.push({ folder, depth });
+      walk(folder.id, depth + 1);
+    }
+  }
+  walk("root", 0);
+  return result;
+}
+
+function renderFolderPickerRow(folderId, depth, label, extraClass) {
+  return `<li class="folder-picker-row${extraClass ? ` ${extraClass}` : ""}" data-folder-id="${folderId}" role="option" tabindex="0" style="--depth: ${depth}">
+    ${extraClass ? "" : FOLDER_ICON}
+    <span class="folder-picker-row-name">${escapeHtml(label)}</span>
+  </li>`;
+}
+
+function renderFolderPickerList() {
+  const rows = flattenFoldersForPicker().map(({ folder, depth }) => renderFolderPickerRow(folder.id, depth, folder.name));
+  el.folderPickerList.innerHTML = [renderFolderPickerRow("", 0, "Unfiled (root)", "folder-picker-row-unfiled"), ...rows].join("");
+  for (const row of el.folderPickerList.querySelectorAll(".folder-picker-row")) {
+    const folderId = row.dataset.folderId || null;
+    row.addEventListener("click", () => confirmFolderPickerMove(folderId));
+    row.addEventListener("keydown", onActivateKeydown(() => confirmFolderPickerMove(folderId)));
+  }
+}
+
+let folderPickerOnConfirm = null;
+
+function openFolderPicker(onConfirm, subjectLabel) {
+  folderPickerOnConfirm = onConfirm;
+  el.folderPickerSubject.textContent = subjectLabel ?? "";
+  renderFolderPickerList();
+  el.folderPickerStatus.textContent = "";
+  el.folderPickerModal.hidden = false;
+}
+
+function closeFolderPicker() {
+  el.folderPickerModal.hidden = true;
+  folderPickerOnConfirm = null;
+}
+
+async function confirmFolderPickerMove(folderId) {
+  if (!folderPickerOnConfirm) return;
+  el.folderPickerStatus.textContent = "Moving…";
+  try {
+    await folderPickerOnConfirm(folderId);
+    closeFolderPicker();
+  } catch (err) {
+    el.folderPickerStatus.textContent = `Error: ${err.message}`;
+  }
+}
+
+el.folderPickerClose.addEventListener("click", closeFolderPicker);
+el.folderPickerCancel.addEventListener("click", closeFolderPicker);
+el.folderPickerModal.addEventListener("click", (event) => {
+  if (event.target === el.folderPickerModal) closeFolderPicker();
 });
 
 function openCompareModal() {

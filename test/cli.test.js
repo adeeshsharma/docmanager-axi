@@ -364,6 +364,99 @@ test("families rename and families tags work end to end through the real binary"
   assert.match(badRename.stdout, /FAMILY_NOT_FOUND/);
 });
 
+test("folders create / list / rename / move / delete work end to end through the real binary", async () => {
+  const created = await runCli(["folders", "create", "Reports"]);
+  assert.equal(created.code, 0, created.stderr);
+  assert.match(created.stdout, /created: Reports/);
+  const idMatch = created.stdout.match(/id: (\S+)/);
+  assert.ok(idMatch, "folders create output should include the new folder id");
+  const folderId = idMatch[1];
+
+  const child = await runCli(["folders", "create", "Q3", "--parent", folderId]);
+  assert.equal(child.code, 0, child.stderr);
+  const childIdMatch = child.stdout.match(/id: (\S+)/);
+  const childId = childIdMatch[1];
+
+  const list = await runCli(["folders", "list"]);
+  assert.equal(list.code, 0);
+  assert.match(list.stdout, /Reports/);
+  assert.match(list.stdout, /Q3/);
+
+  const renamed = await runCli(["folders", "rename", folderId, "Archived Reports"]);
+  assert.equal(renamed.code, 0, renamed.stderr);
+  assert.match(renamed.stdout, /renamed: true/);
+
+  const moved = await runCli(["folders", "move", childId]);
+  assert.equal(moved.code, 0, moved.stderr);
+  assert.match(moved.stdout, /moved: true/);
+
+  const deleteChild = await runCli(["folders", "delete", childId]);
+  assert.equal(deleteChild.code, 0, deleteChild.stderr);
+  assert.match(deleteChild.stdout, /deleted: Q3/);
+
+  const deleteParent = await runCli(["folders", "delete", folderId]);
+  assert.equal(deleteParent.code, 0, deleteParent.stderr);
+});
+
+test("folders delete refuses a non-empty folder", async () => {
+  const created = await runCli(["folders", "create", "NotEmpty"]);
+  const folderId = created.stdout.match(/id: (\S+)/)[1];
+  await runCli(["folders", "create", "Child", "--parent", folderId]);
+
+  const result = await runCli(["folders", "delete", folderId]);
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /not empty/i);
+});
+
+test("folders move rejects a cycle", async () => {
+  const a = await runCli(["folders", "create", "A"]);
+  const aId = a.stdout.match(/id: (\S+)/)[1];
+  const b = await runCli(["folders", "create", "B", "--parent", aId]);
+  const bId = b.stdout.match(/id: (\S+)/)[1];
+
+  const result = await runCli(["folders", "move", aId, "--parent", bId]);
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /descendant/i);
+});
+
+test("folders create requires a name", async () => {
+  const result = await runCli(["folders", "create"]);
+  assert.equal(result.code, 2);
+});
+
+test("families move puts a document in a folder, and --unfile takes it back out", async () => {
+  const filePath = join(fixtureDir, "moveme.html");
+  writeFileSync(filePath, "<html><body>v1</body></html>");
+  const tracked = await runCli(["track", filePath]);
+  const familyId = tracked.stdout.match(/id: (\S+)/)[1];
+
+  const folder = await runCli(["folders", "create", "MoveTarget"]);
+  const folderId = folder.stdout.match(/id: (\S+)/)[1];
+
+  const moved = await runCli(["families", "move", familyId, "--to-folder", folderId]);
+  assert.equal(moved.code, 0, moved.stderr);
+  assert.match(moved.stdout, /1 moved, 0 failed/);
+
+  const unfiled = await runCli(["families", "move", familyId, "--unfile"]);
+  assert.equal(unfiled.code, 0, unfiled.stderr);
+  assert.match(unfiled.stdout, /1 moved, 0 failed/);
+});
+
+test("families move to a nonexistent folder id fails without aborting other ids", async () => {
+  const filePath = join(fixtureDir, "moveme2.html");
+  writeFileSync(filePath, "<html><body>v1</body></html>");
+  const tracked = await runCli(["track", filePath]);
+  const familyId = tracked.stdout.match(/id: (\S+)/)[1];
+
+  const result = await runCli(["families", "move", familyId, "--to-folder", "does-not-exist"]);
+  assert.equal(result.code, 1);
+});
+
+test("families move requires --to-folder or --unfile", async () => {
+  const result = await runCli(["families", "move", "some-id"]);
+  assert.equal(result.code, 2);
+});
+
 test("core status reflects a real running core, and stop actually stops it", async () => {
   const status = await runCli(["core", "status"]);
   assert.match(status.stdout, /running/);

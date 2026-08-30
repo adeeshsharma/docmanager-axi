@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>docmanager</title>
 <script>(function(){try{var t=localStorage.getItem("docmanager-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<script>(function(){try{if(localStorage.getItem("docmanager-sidebar-collapsed")==="true")document.documentElement.dataset.sidebarCollapsed="true";}catch(e){}})();</script>
 <!-- Actually loads Inter instead of just naming it as an unloaded fallback
      in style.css's font stack. Falls back to the existing system-font stack
      automatically if this machine has no internet access - never blocks
@@ -21,6 +22,9 @@
 </div>
 
 <div class="app">
+  <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true">
+    <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M6 3l-5 5 5 5M11 3l-5 5 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
   <aside class="sidebar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
@@ -49,9 +53,13 @@
         <input id="search-input" type="search" placeholder="Search documents…" />
         <button id="search-clear" type="button" hidden>Clear</button>
       </div>
-      <div class="sidebar-section-label" id="family-list-label">Tracked documents</div>
+      <div class="sidebar-section-label-row">
+        <div class="sidebar-section-label" id="family-list-label">Tracked documents</div>
+        <button type="button" id="new-folder-button" class="link-button">+ New folder</button>
+      </div>
       <div id="bulk-actions-bar" class="bulk-actions-bar" hidden>
         <span id="bulk-actions-count"></span>
+        <button type="button" id="bulk-move-button" class="link-button">Move to folder…</button>
         <button type="button" id="bulk-untrack-button" class="link-button bulk-danger">Untrack</button>
         <button type="button" id="bulk-clear-button" class="link-button">Clear</button>
       </div>
@@ -91,42 +99,44 @@
       </div>
 
       <article id="family-detail" class="detail" hidden>
-        <header class="detail-header">
-          <div class="detail-heading">
-            <div class="detail-title-row">
-              <h2 id="detail-title"></h2>
-              <button id="rename-button" type="button" class="icon-button" title="Rename this document" aria-label="Rename this document">
-                <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4L5.4 13H3v-2.4l8.3-8.3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-              </button>
-            </div>
-            <div id="detail-meta" class="detail-meta"></div>
-            <div id="detail-tags" class="tag-row"></div>
-          </div>
-          <div class="detail-actions">
-            <button id="revert-button" type="button" class="open-in-tab" hidden>Revert to this version</button>
-            <a id="open-in-tab" class="open-in-tab" target="_blank" rel="noopener">
-              Open in new tab
-              <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M6.5 3h6.5v6.5M12.7 3.3 3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="detail-identity-row">
+          <h2 id="detail-title"></h2>
+          <button id="rename-button" type="button" class="icon-button" data-tooltip="Rename" aria-label="Rename this document">
+            <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4L5.4 13H3v-2.4l8.3-8.3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          </button>
+          <button id="move-to-folder-button" type="button" class="icon-button" data-tooltip="Move to folder" aria-label="Move to folder">
+            <svg viewBox="0 0 20 20" fill="none" width="14" height="14"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.5 2h7.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          </button>
+          <span class="detail-dot-sep" aria-hidden="true">&middot;</span>
+          <span id="detail-meta" class="detail-meta-inline"></span>
+          <div id="detail-tags" class="tag-cluster"></div>
+          <div class="detail-identity-spacer"></div>
+          <button id="untrack-button" type="button" class="icon-button icon-button-danger" data-tooltip="Untrack" aria-label="Untrack this document">
+            <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M3 5h10M6.5 5V3.5h3V5M4.5 5l.6 8a1 1 0 0 0 1 1h3.8a1 1 0 0 0 1-1l.6-8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <div class="detail-toolbar-row">
+          <ol id="timeline" class="version-strip"></ol>
+          <div class="detail-toolbar-cluster">
+            <button id="revert-button" type="button" class="icon-button" data-tooltip="Revert to this version" aria-label="Revert to this version" hidden>
+              <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M3.5 3.5V7H7M3.7 7A5.3 5.3 0 1 0 5 3.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button id="open-compare-button" type="button" class="icon-button" data-tooltip="Compare versions" aria-label="Compare versions">
+              <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M6 3v10M10 3v10M3 5.5h3M10 5.5h3M3 10.5h3M10 10.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <a id="open-in-tab" class="icon-button" target="_blank" rel="noopener" data-tooltip="Open in new tab" aria-label="Open in new tab">
+              <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M6.5 3h6.5v6.5M12.7 3.3 3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </a>
-            <a id="download-version" class="open-in-tab" download>
-              Download
-              <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M8 2.5v8M4.5 7l3.5 3.5L11.5 7M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <a id="download-version" class="icon-button" download data-tooltip="Download" aria-label="Download this version">
+              <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M8 2.5v8M4.5 7l3.5 3.5L11.5 7M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </a>
-            <button id="lavish-prompt-button" type="button" class="open-in-tab" title="Copy a ready-to-paste message for your agent to open this version in Lavish Editor">
-              Edit in Lavish
-              <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4L5.4 13H3v-2.4l8.3-8.3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            <button id="lavish-prompt-button" type="button" class="icon-button" data-tooltip="Edit in Lavish" aria-label="Edit in Lavish">
+              <svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4L5.4 13H3v-2.4l8.3-8.3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
             </button>
             <span id="lavish-prompt-status" class="status-message" role="status"></span>
-            <button id="untrack-button" type="button" class="open-in-tab untrack-action">Untrack</button>
           </div>
-        </header>
-
-        <ol id="timeline" class="version-strip"></ol>
-
-        <button id="open-compare-button" type="button" class="open-in-tab compare-trigger">
-          Compare versions
-          <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M6 3v10M10 3v10M3 5.5h3M10 5.5h3M3 10.5h3M10 10.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
+        </div>
 
         <div class="reading-pane">
           <div id="version-banner" class="version-banner" hidden>
@@ -251,6 +261,33 @@
           <div class="compare-rendered-label">To</div>
           <iframe id="compare-frame-to" class="reading-frame" title="Newer version, changes highlighted" sandbox="allow-scripts"></iframe>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="folder-context-menu" class="context-menu" hidden role="menu">
+  <button type="button" class="context-menu-item" data-action="subfolder" role="menuitem">New subfolder</button>
+  <button type="button" class="context-menu-item" data-action="rename" role="menuitem">Rename</button>
+  <button type="button" class="context-menu-item context-menu-danger" data-action="delete" role="menuitem">Delete</button>
+</div>
+
+<div id="folder-picker-modal" class="modal-overlay" hidden>
+  <div class="modal-dialog folder-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="folder-picker-title">
+    <header class="modal-header">
+      <div>
+        <h3 id="folder-picker-title">Move to folder</h3>
+        <p id="folder-picker-subject" class="folder-picker-subject"></p>
+      </div>
+      <button type="button" id="folder-picker-close" class="modal-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div class="folder-picker-body">
+      <ul id="folder-picker-list" class="folder-picker-list" role="listbox" aria-label="Destination folder"></ul>
+      <span id="folder-picker-status" class="status-message" role="status"></span>
+      <div class="folder-picker-actions">
+        <button type="button" id="folder-picker-cancel" class="link-button">Cancel</button>
       </div>
     </div>
   </div>

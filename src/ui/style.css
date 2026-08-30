@@ -188,6 +188,60 @@ body {
   grid-template-columns: 272px minmax(0, 1fr);
   height: 100vh;
   min-width: 0;
+  transition: grid-template-columns 0.18s ease;
+}
+
+:root[data-sidebar-collapsed="true"] .app {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+:root[data-sidebar-collapsed="true"] .sidebar {
+  overflow: hidden;
+  border-right: none;
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 22px;
+  left: 272px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: left 0.18s ease;
+}
+
+.sidebar-toggle:hover {
+  color: var(--text);
+}
+
+.sidebar-toggle svg {
+  transition: transform 0.18s ease;
+}
+
+:root[data-sidebar-collapsed="true"] .sidebar-toggle {
+  left: 0;
+  transform: translateX(0);
+}
+
+:root[data-sidebar-collapsed="true"] .sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 760px) {
+  .sidebar-toggle {
+    display: none;
+  }
 }
 
 @media (max-width: 760px) {
@@ -302,6 +356,32 @@ body {
   padding: var(--space-2) var(--space-3) var(--space-1);
 }
 
+.sidebar-section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: var(--space-3);
+}
+
+.sidebar-section-label-row .sidebar-section-label {
+  padding-right: 0;
+}
+
+#new-folder-button {
+  background: none;
+  border: none;
+  color: var(--sidebar-muted);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+#new-folder-button:hover {
+  color: var(--sidebar-text);
+}
+
 .search-box {
   display: flex;
   align-items: center;
@@ -356,7 +436,7 @@ body {
   padding: 0;
 }
 
-.family-list li {
+.family-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -365,23 +445,24 @@ body {
   cursor: pointer;
   border-left: 2px solid transparent;
   min-width: 0;
+  margin-left: calc(var(--depth, 0) * var(--space-4, 16px));
 }
 
-.family-list li:hover {
+.family-row:hover {
   background: var(--sidebar-hover);
 }
 
-.family-list li.selected {
+.family-row.selected {
   background: var(--accent-tint);
   border-left-color: var(--accent);
 }
 
-.family-list li svg {
+.family-row svg {
   flex-shrink: 0;
   color: var(--sidebar-muted);
 }
 
-.family-list li.selected svg {
+.family-row.selected svg {
   color: #aec5f7;
 }
 
@@ -439,11 +520,59 @@ body {
   color: #ff8177;
 }
 
-.family-list li .family-select {
+.family-row .family-select {
   flex-shrink: 0;
   width: auto;
   margin: 0;
   cursor: pointer;
+}
+
+.folder-row {
+  margin-left: calc(var(--depth, 0) * var(--space-4, 16px));
+}
+
+.folder-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--sidebar-text);
+}
+
+.folder-header:hover {
+  background: var(--sidebar-hover);
+}
+
+.folder-header .meta {
+  color: var(--sidebar-muted);
+}
+
+.folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron-wrap {
+  display: inline-flex;
+  color: var(--sidebar-muted);
+  transition: transform 0.15s ease;
+}
+
+.chevron-wrap.expanded {
+  transform: rotate(90deg);
+}
+
+.folder-menu-button {
+  opacity: 0;
+}
+
+.folder-header:hover .folder-menu-button,
+.folder-header:focus-within .folder-menu-button {
+  opacity: 1;
 }
 
 .dup-badge {
@@ -601,39 +730,163 @@ body {
   overflow: hidden;
 }
 
-.detail-header {
+/* ---------- Document detail: one compact identity row, one toolbar row
+   (merged with the version timeline) - see systemPatterns.md/the folders-era
+   redesign notes for why this replaced four separately-stacked bands. ---------- */
+
+.detail-identity-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   flex-shrink: 0;
-  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: var(--space-2);
 }
 
-.detail-heading h2 {
-  margin: 0 0 0.2rem;
-  font-size: 1.3rem;
+.detail-identity-row h2 {
+  margin: 0;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
 }
 
-.detail-title-row {
+.detail-dot-sep {
+  color: var(--border);
+}
+
+.detail-meta-inline {
+  color: var(--text-faint);
+  font-size: 0.76rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tag-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.detail-identity-spacer {
+  flex: 1;
+  min-width: var(--space-2);
+}
+
+.detail-toolbar-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  flex-shrink: 0;
+  padding-bottom: var(--space-3);
+}
+
+.detail-toolbar-cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border-soft);
+}
+
+.icon-button-danger:hover {
+  color: #c0392b;
+  border-color: #c0392b;
+}
+
+/* A real, fast-appearing tooltip - replaces relying on the browser's own
+   `title` attribute, whose default hover delay (~1-1.5s in most browsers)
+   is exactly the "wait for it to show up" friction this was added to fix.
+   CSS-only (attr()-driven content), so it works identically on every
+   .icon-button without any JS wiring, and :focus-visible gets it too, not
+   just :hover - a keyboard user tabbing through the toolbar sees the same
+   label a mouse user does. */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 200;
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-tooltip]::after {
+    transition-duration: 0.01ms;
+    transition-delay: 0s;
+  }
+}
+
+/* The identity row sits at the very top of .detail, which clips overflow
+   (needed to keep the flex-column layout bounded) - a tooltip rendered
+   above one of these buttons has nowhere to go but into that clipped
+   region. Flip to below for this row only; the toolbar row underneath has
+   a full row of clearance above it and never has this problem. */
+.detail-identity-row [data-tooltip]::after {
+  bottom: auto;
+  top: calc(100% + 7px);
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.detail-identity-row [data-tooltip]:hover::after,
+.detail-identity-row [data-tooltip]:focus-visible::after {
+  transform: translateX(-50%) translateY(0);
 }
 
 .icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 24px;
   height: 24px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
+  /* Shared by both <button> (revert, compare, lavish, untrack) and <a>
+     (open-in-tab, download) elements now that the whole document-detail
+     toolbar reuses this one class - without these resets, a plain <a>
+     shows an underline/link color and a plain <button> falls back to the
+     browser's native control chrome, which renders pale and
+     disabled-looking under this page's color-scheme: dark. The exact bug
+     this project already fixed once for .open-in-tab, now prevented here
+     since .icon-button inherited that same dual-element-type duty. */
   background: none;
+  appearance: none;
+  text-decoration: none;
+  font-family: inherit;
   color: var(--text-faint);
   cursor: pointer;
 }
@@ -701,51 +954,6 @@ body {
   border-color: var(--accent);
 }
 
-.open-in-tab {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-shrink: 0;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 500;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  margin-top: 0.15rem;
-  /* This class is shared by both <a> (no default appearance) and <button>
-     elements (revert-button, lavish-prompt-button) - without an explicit
-     reset, a plain <button> falls back to the browser's native control
-     chrome, which under this page's color-scheme: dark renders as a pale,
-     disabled-looking box instead of matching its sibling <a> buttons. The
-     same fix already existed on .untrack-action alone; lifted to the base
-     class so every button using .open-in-tab gets it, not just that one. */
-  background: none;
-  appearance: none;
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.15s ease, color 0.12s ease, border-color 0.12s ease;
-}
-
-.open-in-tab:hover {
-  color: var(--text);
-  border-color: var(--text-faint);
-}
-
-.detail-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.untrack-action:hover {
-  color: #c0392b;
-  border-color: #c0392b;
-}
-
 /* ---------- Version strip ---------- */
 /* A horizontal row, not a vertical rail - version control stays visible
    in one place without taking real space away from actually reading. */
@@ -755,9 +963,10 @@ body {
   gap: var(--space-2);
   overflow-x: auto;
   list-style: none;
-  margin: 0 0 var(--space-3);
+  margin: 0;
   padding: 0 0 var(--space-1);
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .version-chip {
@@ -823,11 +1032,6 @@ body {
 /* ---------- Compare versions (a dedicated modal, not inline - the family
    view is crowded enough with the timeline and reading pane already) ---------- */
 
-.compare-trigger {
-  align-self: flex-start;
-  margin-bottom: var(--space-3);
-}
-
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -855,6 +1059,121 @@ body {
 .compare-modal-dialog {
   width: 96vw;
   height: 94vh;
+}
+
+#folder-picker-modal .modal-dialog {
+  width: min(90vw, 420px);
+  max-height: min(80vh, 520px);
+}
+
+.folder-picker-subject {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: var(--space-1);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.context-menu-item:hover,
+.context-menu-item:focus-visible {
+  background: var(--border-soft);
+}
+
+.context-menu-danger {
+  color: #e0685c;
+}
+
+.folder-picker-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+
+.folder-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+  min-height: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  padding-left: calc(var(--space-3) + var(--depth, 0) * var(--space-4));
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.folder-picker-row svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.folder-picker-row:hover,
+.folder-picker-row:focus-visible {
+  background: var(--border-soft);
+}
+
+.folder-picker-row-unfiled {
+  color: var(--text-muted);
+  font-style: italic;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.folder-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.folder-picker-actions #folder-picker-cancel {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.folder-picker-actions #folder-picker-cancel:hover {
+  color: var(--text);
 }
 
 .modal-header {

@@ -60,6 +60,12 @@ export const coreClient = {
   deleteVersion: (id, hash) => request("DELETE", `/families/${id}/versions/${encodeURIComponent(hash)}`),
   renameFamily: (id, syntheticPath) => request("POST", `/families/${id}/rename`, { syntheticPath }),
   setFamilyTags: (id, tags) => request("POST", `/families/${id}/tags`, { tags }),
+  listFolders: () => request("GET", "/folders"),
+  createFolder: (name, parentId) => request("POST", "/folders", { name, parentId }),
+  renameFolder: (id, name) => request("POST", `/folders/${id}/rename`, { name }),
+  moveFolder: (id, parentId) => request("POST", `/folders/${id}/move`, { parentId }),
+  deleteFolder: (id) => request("DELETE", `/folders/${id}`),
+  moveDocuments: (ids, folderId) => request("POST", "/documents/move", { ids, folderId }),
   getFamilyDiff: (id, hashA, hashB) =>
     request("GET", `/families/${id}/diff?a=${encodeURIComponent(hashA)}&b=${encodeURIComponent(hashB)}`),
   listFamilies: () => request("GET", "/families"),
