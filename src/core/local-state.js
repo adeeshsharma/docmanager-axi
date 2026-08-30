@@ -53,6 +53,17 @@ export function removeMappingByFamilyId(familyId) {
 }
 
 /**
+ * Removes exactly one mapping by its realPath, leaving any other mapping for
+ * the same (or a different) family untouched - the scoped counterpart to
+ * removeMappingByFamilyId, for retiring a single stale mapping rather than
+ * every mapping a family has.
+ */
+export function removeMapping(realPath) {
+  const mappings = readAll().filter((m) => m.realPath !== realPath);
+  writeAll(mappings);
+}
+
+/**
  * A mapping's own syntheticPath is denormalized from the family record it
  * points at (store.js is the source of truth) - purely so reconcile()'s
  * results carry a readable path without an extra family lookup per mapping.
