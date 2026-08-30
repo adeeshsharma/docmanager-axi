@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { storePath, listFamilyIds, getFamily, readContent } from "./store.js";
+import { storePath, listFamilyIds, getFamily, readContent, moveFamilyToFolder } from "./store.js";
 import { rebuildIndex, listFamiliesFromIndex } from "./index.js";
 import { listMappings, removeMappingByFamilyId } from "./local-state.js";
+import { listFolders, getFolder, reparentFolder } from "./folders.js";
 
 // A diagnostic-and-safe-repair command, distinct from (and much less
 // dangerous than) a full reset: everything here either only READS state, or
@@ -155,6 +156,49 @@ function checkLocalState() {
   };
 }
 
+// Same reasoning as checkLocalState() above: a folderId/parentId pointing
+// at a folder record that no longer exists is a pointer to nothing, safe
+// to reset to null (unfiled/root) automatically - never data loss, since
+// nothing about the family's own content or the child folder's own record
+// is touched, only which (now-gone) folder it claimed to belong to.
+async function checkFolders() {
+  const folders = listFolders();
+  const orphanedFolderParents = folders.filter((f) => f.parentId && !getFolder(f.parentId));
+  for (const folder of orphanedFolderParents) {
+    await reparentFolder(folder.id, null);
+  }
+
+  const familiesWithOrphanedFolder = [];
+  for (const id of listFamilyIds()) {
+    let family;
+    try {
+      family = getFamily(id);
+    } catch {
+      continue;
+    }
+    if (family?.folderId && !getFolder(family.folderId)) {
+      familiesWithOrphanedFolder.push(family);
+    }
+  }
+  for (const family of familiesWithOrphanedFolder) {
+    await moveFamilyToFolder(family.id, null);
+  }
+
+  const repairedCount = orphanedFolderParents.length + familiesWithOrphanedFolder.length;
+  if (repairedCount === 0) {
+    return { name: "folders", status: "ok", message: `${folders.length} folder(s), all references valid` };
+  }
+  return {
+    name: "folders",
+    status: "repaired",
+    message: `Reset ${repairedCount} dangling folder reference(s) to unfiled/root`,
+    details: [
+      ...orphanedFolderParents.map((f) => ({ folder: f.name, issue: "parent folder no longer exists" })),
+      ...familiesWithOrphanedFolder.map((f) => ({ family: f.syntheticPath, issue: "folder no longer exists" })),
+    ],
+  };
+}
+
 const SEVERITY = { ok: 0, repaired: 0, warning: 1, error: 2 };
 
 export async function runDoctor() {
@@ -165,7 +209,13 @@ export async function runDoctor() {
   // than reporting hollow zero-count "errors" against nothing.
   if (existsSync(storePath())) {
     const integrity = walkFamiliesForIntegrity();
-    checks.push(checkFamilyIntegrity(integrity), checkContentIntegrity(integrity), checkIndex(), checkLocalState());
+    checks.push(
+      checkFamilyIntegrity(integrity),
+      checkContentIntegrity(integrity),
+      checkIndex(),
+      checkLocalState(),
+      await checkFolders(),
+    );
   }
 
   const worst = checks.reduce((max, c) => Math.max(max, SEVERITY[c.status] ?? 0), 0);
