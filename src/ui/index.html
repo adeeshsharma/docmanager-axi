@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>docmanager</title>
 <script>(function(){try{var t=localStorage.getItem("docmanager-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}})();</script>
+<script>(function(){try{if(localStorage.getItem("docmanager-sidebar-collapsed")==="true")document.documentElement.dataset.sidebarCollapsed="true";}catch(e){}})();</script>
 <!-- Actually loads Inter instead of just naming it as an unloaded fallback
      in style.css's font stack. Falls back to the existing system-font stack
      automatically if this machine has no internet access - never blocks
@@ -21,6 +22,9 @@
 </div>
 
 <div class="app">
+  <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true">
+    <svg viewBox="0 0 16 16" fill="none" width="12" height="12"><path d="M6 3l-5 5 5 5M11 3l-5 5 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
   <aside class="sidebar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">
@@ -270,23 +274,22 @@
 </div>
 
 <div id="folder-picker-modal" class="modal-overlay" hidden>
-  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="folder-picker-title">
+  <div class="modal-dialog folder-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="folder-picker-title">
     <header class="modal-header">
-      <h3 id="folder-picker-title">Move to folder</h3>
+      <div>
+        <h3 id="folder-picker-title">Move to folder</h3>
+        <p id="folder-picker-subject" class="folder-picker-subject"></p>
+      </div>
       <button type="button" id="folder-picker-close" class="modal-close" aria-label="Close">
         <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
     </header>
     <div class="folder-picker-body">
-      <label for="folder-picker-select">Destination</label>
-      <select id="folder-picker-select">
-        <option value="">Unfiled (root)</option>
-      </select>
+      <ul id="folder-picker-list" class="folder-picker-list" role="listbox" aria-label="Destination folder"></ul>
+      <span id="folder-picker-status" class="status-message" role="status"></span>
       <div class="folder-picker-actions">
-        <button type="button" id="folder-picker-confirm">Move</button>
         <button type="button" id="folder-picker-cancel" class="link-button">Cancel</button>
       </div>
-      <span id="folder-picker-status" class="status-message" role="status"></span>
     </div>
   </div>
 </div>

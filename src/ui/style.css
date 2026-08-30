@@ -188,6 +188,60 @@ body {
   grid-template-columns: 272px minmax(0, 1fr);
   height: 100vh;
   min-width: 0;
+  transition: grid-template-columns 0.18s ease;
+}
+
+:root[data-sidebar-collapsed="true"] .app {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+:root[data-sidebar-collapsed="true"] .sidebar {
+  overflow: hidden;
+  border-right: none;
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 22px;
+  left: 272px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: left 0.18s ease;
+}
+
+.sidebar-toggle:hover {
+  color: var(--text);
+}
+
+.sidebar-toggle svg {
+  transition: transform 0.18s ease;
+}
+
+:root[data-sidebar-collapsed="true"] .sidebar-toggle {
+  left: 0;
+  transform: translateX(0);
+}
+
+:root[data-sidebar-collapsed="true"] .sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 760px) {
+  .sidebar-toggle {
+    display: none;
+  }
 }
 
 @media (max-width: 760px) {
@@ -933,7 +987,17 @@ body {
 }
 
 #folder-picker-modal .modal-dialog {
-  width: min(90vw, 380px);
+  width: min(90vw, 420px);
+  max-height: min(80vh, 520px);
+}
+
+.folder-picker-subject {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .context-menu {
@@ -974,8 +1038,47 @@ body {
 .folder-picker-body {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
+}
+
+.folder-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+  min-height: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+
+.folder-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  padding-left: calc(var(--space-3) + var(--depth, 0) * var(--space-4));
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.folder-picker-row svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.folder-picker-row:hover,
+.folder-picker-row:focus-visible {
+  background: var(--border-soft);
+}
+
+.folder-picker-row-unfiled {
+  color: var(--text-muted);
+  font-style: italic;
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .folder-picker-actions {

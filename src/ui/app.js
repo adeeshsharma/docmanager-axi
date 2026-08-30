@@ -31,8 +31,8 @@ const el = {
   bulkMoveButton: document.getElementById("bulk-move-button"),
   folderPickerModal: document.getElementById("folder-picker-modal"),
   folderPickerClose: document.getElementById("folder-picker-close"),
-  folderPickerSelect: document.getElementById("folder-picker-select"),
-  folderPickerConfirm: document.getElementById("folder-picker-confirm"),
+  folderPickerSubject: document.getElementById("folder-picker-subject"),
+  folderPickerList: document.getElementById("folder-picker-list"),
   folderPickerCancel: document.getElementById("folder-picker-cancel"),
   folderPickerStatus: document.getElementById("folder-picker-status"),
   moveToFolderButton: document.getElementById("move-to-folder-button"),
@@ -76,6 +76,7 @@ const el = {
   tokenStatus: document.getElementById("token-status"),
   checkSshButton: document.getElementById("check-ssh-button"),
   sshCheckOutput: document.getElementById("ssh-check-output"),
+  sidebarToggle: document.getElementById("sidebar-toggle"),
   themeSystem: document.getElementById("theme-system"),
   themeLight: document.getElementById("theme-light"),
   themeDark: document.getElementById("theme-dark"),
@@ -343,7 +344,7 @@ el.bulkMoveButton.addEventListener("click", () => {
     state.bulkSelectedIds.clear();
     updateBulkActionsBar();
     refreshDocuments();
-  });
+  }, `${ids.length} document${ids.length === 1 ? "" : "s"}`);
 });
 
 el.bulkUntrackButton.addEventListener("click", async () => {
@@ -730,6 +731,45 @@ el.themeDark.addEventListener("click", () => applyTheme("dark"));
 // script in <head> - only the button UI needs to catch up on load.
 updateThemeButtons(getStoredTheme());
 
+// Same pattern as the theme toggle just above: a pure client-side display
+// preference, never synced through /settings, applied before first paint
+// by its own anti-flash script in index.html's <head> so there's no flash
+// of an expanded sidebar before this catches up.
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "docmanager-sidebar-collapsed";
+
+function isSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function applySidebarCollapsed(collapsed) {
+  if (collapsed) {
+    document.documentElement.dataset.sidebarCollapsed = "true";
+  } else {
+    delete document.documentElement.dataset.sidebarCollapsed;
+  }
+  try {
+    if (collapsed) {
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, "true");
+    } else {
+      localStorage.removeItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    }
+  } catch {
+    // Applies for this page load regardless; it just won't persist.
+  }
+  el.sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  el.sidebarToggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+}
+
+el.sidebarToggle.addEventListener("click", () => applySidebarCollapsed(!isSidebarCollapsed()));
+
+// The attribute itself is already set (or not) by the anti-flash inline
+// script - only the button's own aria state needs to catch up on load.
+applySidebarCollapsed(isSidebarCollapsed());
+
 function switchView(view) {
   state.view = view;
   el.viewDocuments.hidden = view !== "documents";
@@ -931,7 +971,7 @@ el.moveToFolderButton.addEventListener("click", () => {
   openFolderPicker(async (folderId) => {
     await api("POST", `/families/${state.selectedId}/move`, { folderId });
     refreshDocuments();
-  });
+  }, state.detailFamily?.syntheticPath ?? "");
 });
 
 el.renameButton.addEventListener("click", async () => {
@@ -1055,28 +1095,46 @@ el.revertButton.addEventListener("click", async () => {
   }
 });
 
-// Builds "Parent / Child" style labels so a deeply nested folder is still
-// identifiable in a flat <select> - walks each folder's own parentId chain
-// using the already-loaded state.folders, no extra request needed.
-function folderPath(folder) {
-  const parts = [folder.name];
-  let current = folder;
-  while (current.parentId) {
-    current = state.folders.find((f) => f.id === current.parentId);
-    if (!current) break;
-    parts.unshift(current.name);
+// Depth-first tree order (root folders first, each one's own children right
+// after it), reusing the exact same parent/child map the sidebar tree
+// itself builds from state.folders - one shared traversal, not a second,
+// slightly-different implementation of "walk the folder hierarchy."
+function flattenFoldersForPicker() {
+  const tree = buildFolderTree();
+  const result = [];
+  function walk(parentKey, depth) {
+    for (const folder of tree.byParent.get(parentKey) ?? []) {
+      result.push({ folder, depth });
+      walk(folder.id, depth + 1);
+    }
   }
-  return parts.join(" / ");
+  walk("root", 0);
+  return result;
+}
+
+function renderFolderPickerRow(folderId, depth, label, extraClass) {
+  return `<li class="folder-picker-row${extraClass ? ` ${extraClass}` : ""}" data-folder-id="${folderId}" role="option" tabindex="0" style="--depth: ${depth}">
+    ${extraClass ? "" : FOLDER_ICON}
+    <span class="folder-picker-row-name">${escapeHtml(label)}</span>
+  </li>`;
+}
+
+function renderFolderPickerList() {
+  const rows = flattenFoldersForPicker().map(({ folder, depth }) => renderFolderPickerRow(folder.id, depth, folder.name));
+  el.folderPickerList.innerHTML = [renderFolderPickerRow("", 0, "Unfiled (root)", "folder-picker-row-unfiled"), ...rows].join("");
+  for (const row of el.folderPickerList.querySelectorAll(".folder-picker-row")) {
+    const folderId = row.dataset.folderId || null;
+    row.addEventListener("click", () => confirmFolderPickerMove(folderId));
+    row.addEventListener("keydown", onActivateKeydown(() => confirmFolderPickerMove(folderId)));
+  }
 }
 
 let folderPickerOnConfirm = null;
 
-function openFolderPicker(onConfirm) {
+function openFolderPicker(onConfirm, subjectLabel) {
   folderPickerOnConfirm = onConfirm;
-  const options = state.folders
-    .map((f) => `<option value="${f.id}">${escapeHtml(folderPath(f))}</option>`)
-    .join("");
-  el.folderPickerSelect.innerHTML = `<option value="">Unfiled (root)</option>${options}`;
+  el.folderPickerSubject.textContent = subjectLabel ?? "";
+  renderFolderPickerList();
   el.folderPickerStatus.textContent = "";
   el.folderPickerModal.hidden = false;
 }
@@ -1086,14 +1144,7 @@ function closeFolderPicker() {
   folderPickerOnConfirm = null;
 }
 
-el.folderPickerClose.addEventListener("click", closeFolderPicker);
-el.folderPickerCancel.addEventListener("click", closeFolderPicker);
-el.folderPickerModal.addEventListener("click", (event) => {
-  if (event.target === el.folderPickerModal) closeFolderPicker();
-});
-
-el.folderPickerConfirm.addEventListener("click", async () => {
-  const folderId = el.folderPickerSelect.value || null;
+async function confirmFolderPickerMove(folderId) {
   if (!folderPickerOnConfirm) return;
   el.folderPickerStatus.textContent = "Moving…";
   try {
@@ -1102,6 +1153,12 @@ el.folderPickerConfirm.addEventListener("click", async () => {
   } catch (err) {
     el.folderPickerStatus.textContent = `Error: ${err.message}`;
   }
+}
+
+el.folderPickerClose.addEventListener("click", closeFolderPicker);
+el.folderPickerCancel.addEventListener("click", closeFolderPicker);
+el.folderPickerModal.addEventListener("click", (event) => {
+  if (event.target === el.folderPickerModal) closeFolderPicker();
 });
 
 function openCompareModal() {
