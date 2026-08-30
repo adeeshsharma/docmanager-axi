@@ -373,7 +373,8 @@ el.bulkUntrackButton.addEventListener("click", async () => {
 function renderDetailHeader(family) {
   state.detailFamily = family; // cached so rename/tag actions always read the currently-shown family's own fresh data, not a possibly-stale state.families entry
   el.detailTitle.textContent = family.syntheticPath;
-  el.detailMeta.textContent = `${family.id} · tracked since ${formatDate(family.createdAt)}`;
+  const versionCount = family.versions.length;
+  el.detailMeta.textContent = `${versionCount} version${versionCount === 1 ? "" : "s"} · tracked since ${formatDate(family.createdAt)}`;
   renderTags(family.tags ?? []);
 }
 
