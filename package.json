@@ -1,6 +1,6 @@
 {
   "name": "docmanager-axi",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Manage and version HTML documents on your local machine",
   "type": "module",
   "bin": {

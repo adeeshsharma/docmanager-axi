@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 From the first real release onward, new entries below this point are generated automatically by [release-please](https://github.com/googleapis/release-please) from [Conventional Commits](https://www.conventionalcommits.org/) - see `RELEASING.md`. The `[Unreleased]` section below predates that and is hand-written, describing the full pre-release v1 feature set as a single snapshot rather than a per-commit log.
 
+## [1.2.1](https://github.com/adeeshsharma/docmanager-axi/compare/docmanager-axi-v1.2.0...docmanager-axi-v1.2.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* retire a family's previous Lavish scratch mapping on relink ([#12](https://github.com/adeeshsharma/docmanager-axi/issues/12)) ([e6bd421](https://github.com/adeeshsharma/docmanager-axi/commit/e6bd421fbd8d7d39f0e6297035876b955edb3b9c))
+
 ## [1.2.0](https://github.com/adeeshsharma/docmanager-axi/compare/docmanager-axi-v1.1.0...docmanager-axi-v1.2.0) (2026-08-30)
 
 
