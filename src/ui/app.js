@@ -9,6 +9,7 @@ const state = {
   lastKnownHeadVersion: null, // headVersion as of the last time we synced with the server
   bulkSelectedIds: new Set(), // family ids checked for bulk actions, persists across list re-renders
   expandedFolderIds: new Set(), // folder ids currently expanded in the sidebar tree, persists across re-renders
+  linkNavHistory: [], // stack of {familyId, hash} pushed when navigating via a cross-document link click - "Back" pops one to return to the referencing document
 };
 
 // Bumped by every selectFamily() call. A concurrent background refresh
@@ -53,6 +54,7 @@ const el = {
   lavishPromptButton: document.getElementById("lavish-prompt-button"),
   lavishPromptStatus: document.getElementById("lavish-prompt-status"),
   untrackButton: document.getElementById("untrack-button"),
+  backToSourceButton: document.getElementById("back-to-source-button"),
   revertButton: document.getElementById("revert-button"),
   openCompareButton: document.getElementById("open-compare-button"),
   compareModal: document.getElementById("compare-modal"),
@@ -561,7 +563,11 @@ function renderDiff(parts) {
     .join("\n");
 }
 
-async function selectFamily(id) {
+async function selectFamily(id, { preserveLinkHistory = false } = {}) {
+  if (!preserveLinkHistory) {
+    state.linkNavHistory = [];
+    el.backToSourceButton.hidden = true;
+  }
   const token = ++selectionToken;
   state.selectedId = id;
   state.viewingHash = null;
@@ -1200,6 +1206,42 @@ window.addEventListener("message", (event) => {
   if (!data || data.source !== "docmanager-diff-scroll") return;
   const target = event.source === el.compareFrameFrom.contentWindow ? el.compareFrameTo : el.compareFrameFrom;
   target.contentWindow?.postMessage({ source: "docmanager-diff-scroll-to", ratio: data.ratio }, "*");
+});
+
+// The reading pane's iframe is sandboxed the same way the compare view's
+// panes are (allow-scripts, no allow-same-origin - ARCHITECTURE.md section
+// 5): it can run the small click-interceptor script server.js injects
+// (link-discovery.js's LINK_CLICK_SCRIPT) but can't navigate the parent
+// page directly, so it posts a message instead. event.source (not the
+// message's own claimed origin) identifies which iframe it came from, the
+// same reasoning the diff-scroll listener above already uses.
+window.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || data.source !== "docmanager-navigate-link" || event.source !== el.readingFrame.contentWindow) return;
+  // The server only ever rewrites a link to a family's CURRENT head hash,
+  // so a lookup by headVersion against the already-loaded family list is
+  // always enough - no extra API call needed.
+  const target = state.families.find((f) => f.headVersion === data.hash);
+  if (!target) return;
+
+  if (state.selectedId && state.viewingHash) {
+    state.linkNavHistory.push({ familyId: state.selectedId, hash: state.viewingHash });
+  }
+  el.backToSourceButton.hidden = false;
+  selectFamily(target.id, { preserveLinkHistory: true });
+});
+
+el.backToSourceButton.addEventListener("click", () => {
+  const previous = state.linkNavHistory.pop();
+  if (!previous) return;
+  el.backToSourceButton.hidden = state.linkNavHistory.length === 0;
+  selectFamily(previous.familyId, { preserveLinkHistory: true }).then(() => {
+    // selectFamily() itself always lands on the family's current HEAD
+    // version - if the user was viewing an older version when they clicked
+    // the link, this restores that exact version instead of leaving them
+    // on head.
+    if (previous.hash !== state.lastKnownHeadVersion) viewVersion(previous.hash);
+  });
 });
 
 el.compareModeText.addEventListener("click", () => setCompareMode("text"));
