@@ -4,6 +4,7 @@ import { basename } from "node:path";
 import { listMappings, updateMappingSyntheticPath } from "./local-state.js";
 import { getFamily, readContent, recordVersionIfChanged } from "./store.js";
 import { isSameNormalizedHtml } from "./html-normalize.js";
+import { discoverAndTrackLinkedDocuments } from "./link-discovery.js";
 
 function hashContent(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
@@ -97,6 +98,19 @@ export async function reconcile() {
       familyId,
       status: changed ? "new-version-captured" : "unchanged",
     });
+
+    // A version that genuinely changed may have added a link to a document
+    // never seen before - re-run the same crawl trackPath() itself triggers
+    // at track time, so a link added later works exactly like one present
+    // from the start. A mapping with no linkRoot predates this feature
+    // entirely - skipped, not guessed at.
+    if (changed && mapping.linkRoot) {
+      const { results: linkedResults } = await discoverAndTrackLinkedDocuments(realPath, mapping.linkRoot);
+      for (const linked of linkedResults) {
+        if (linked.status !== "tracked") continue;
+        results.push({ syntheticPath: linked.family.syntheticPath, familyId: linked.family.id, status: "tracked-via-link" });
+      }
+    }
   }
 
   return results;
