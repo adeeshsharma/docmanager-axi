@@ -34,16 +34,21 @@ export function findByRealPath(realPath) {
 /**
  * Each real path maps to at most one synthetic path on a given machine -
  * tracking a path that's already mapped elsewhere is an error, not a silent
- * overwrite.
+ * overwrite. `linkRoot`, when provided, is the directory boundary this
+ * mapping's cross-document link-following is bounded to (see
+ * link-discovery.js) - stored only when given, never as an explicit
+ * `undefined` key, so a pre-existing mapping written before this field
+ * existed and a freshly-created one that simply wasn't given one both read
+ * back the same way ("linkRoot" not present at all).
  */
-export function addMapping({ syntheticPath, realPath, familyId }) {
+export function addMapping({ syntheticPath, realPath, familyId, linkRoot }) {
   const mappings = readAll();
   if (mappings.some((m) => m.realPath === realPath)) {
     const err = new Error(`"${realPath}" is already tracked under a different synthetic path`);
     err.code = "PATH_ALREADY_MAPPED";
     throw err;
   }
-  mappings.push({ syntheticPath, realPath, familyId });
+  mappings.push({ syntheticPath, realPath, familyId, ...(linkRoot ? { linkRoot } : {}) });
   writeAll(mappings);
 }
 

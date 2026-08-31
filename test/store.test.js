@@ -13,6 +13,7 @@ import {
   deleteFamily,
   listFamilyIds,
   readContent,
+  findFamilyByVersionHash,
 } from "../src/core/store.js";
 import { runGit } from "../src/core/git.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex } from "../src/core/index.js";
@@ -132,4 +133,19 @@ test("index rebuild matches on-disk family/version data, current flag correct", 
   const current = full.versions.find((v) => v.current);
   assert.equal(current.hash, full.headVersion);
   assert.equal(full.versions.filter((v) => v.current).length, 1);
+});
+
+test("findFamilyByVersionHash finds the family owning a given version hash", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  const v1 = family.headVersion;
+  const { family: f2 } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
+  const v2 = f2.headVersion;
+
+  assert.equal(findFamilyByVersionHash(v1).id, family.id);
+  assert.equal(findFamilyByVersionHash(v2).id, family.id);
+});
+
+test("findFamilyByVersionHash returns null for an unknown hash", async () => {
+  await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  assert.equal(findFamilyByVersionHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), null);
 });

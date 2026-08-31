@@ -101,6 +101,19 @@ export function findFamilyBySyntheticPath(syntheticPath) {
   return null;
 }
 
+/**
+ * Finds the family whose version history contains `hash` - used to resolve
+ * "which document is currently being served" when rewriting cross-document
+ * links (server.js's handleContent()).
+ */
+export function findFamilyByVersionHash(hash) {
+  for (const id of listFamilyIds()) {
+    const family = getFamily(id);
+    if (family && family.versions[hash]) return family;
+  }
+  return null;
+}
+
 export function readContent(hash) {
   const filePath = join(contentDir(), `${hash}.html`);
   if (!existsSync(filePath)) return null;
