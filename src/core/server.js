@@ -4,9 +4,11 @@ import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION } from "../version.js";
 import { trackPaths, untrackFamilies, renameTrackedDocument } from "./track.js";
-import { mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags, moveFamilyToFolder } from "./store.js";
+import { findFamilyByVersionHash, getFamily, mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags, moveFamilyToFolder } from "./store.js";
+import { findByRealPath, listMappings } from "./local-state.js";
 import { listFolders, getFolder, createFolder, renameFolder, reparentFolder, deleteFolder } from "./folders.js";
-import { diffVersions, renderHighlightedContent } from "./diff.js";
+import { diffVersions, renderHighlightedContent, injectIntoHead } from "./diff.js";
+import { rewriteLinks, LINK_CLICK_SCRIPT } from "./link-discovery.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex, searchFamilies } from "./index.js";
 import { reconcile } from "./reconcile.js";
 import { suggestLinks } from "./suggest.js";
@@ -486,8 +488,19 @@ function handleEvents(req, res) {
 // nothing else is ever a legitimate hash.
 const CONTENT_HASH_PATTERN = /^[0-9a-f]{64}$/;
 
+function resolveHrefHash(realPath) {
+  const mapping = findByRealPath(realPath);
+  if (!mapping) return null;
+  const family = getFamily(mapping.familyId);
+  return family ? family.headVersion : null;
+}
+
 // Also kept separate from ROUTES: this serves raw HTML bytes for the
-// reading pane's iframe to load, not a JSON body.
+// reading pane's iframe to load, not a JSON body. Cross-document <a href>
+// links are rewritten to the target's CURRENT head hash on every request
+// (never cached - see link-discovery.js's own reasoning), so a link always
+// points at whichever version is current right now regardless of what was
+// current when this content was originally tracked.
 function handleContent(hash, res) {
   if (!CONTENT_HASH_PATTERN.test(hash)) {
     sendJson(res, 400, { error: "invalid content hash", code: "INVALID_CONTENT_HASH" });
@@ -498,8 +511,19 @@ function handleContent(hash, res) {
     sendJson(res, 404, { error: `No content for hash "${hash}"`, code: "CONTENT_NOT_FOUND" });
     return;
   }
+
+  let output = content;
+  const servingFamily = findFamilyByVersionHash(hash);
+  if (servingFamily) {
+    const mapping = listMappings().find((m) => m.familyId === servingFamily.id);
+    if (mapping) {
+      const { html, rewroteAny } = rewriteLinks(content, mapping.realPath, resolveHrefHash);
+      if (rewroteAny) output = Buffer.from(injectIntoHead(html, LINK_CLICK_SCRIPT), "utf8");
+    }
+  }
+
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  res.end(content);
+  res.end(output);
 }
 
 // Serves one version's content annotated with block-level highlighting

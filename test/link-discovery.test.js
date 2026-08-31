@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveHrefTarget, discoverLinkTargets, discoverAndTrackLinkedDocuments } from "../src/core/link-discovery.js";
+import { resolveHrefTarget, discoverLinkTargets, discoverAndTrackLinkedDocuments, rewriteLinks } from "../src/core/link-discovery.js";
 import { useIsolatedHome, cleanupHome } from "./helpers.js";
 import { trackPath } from "../src/core/track.js";
 import { findByRealPath } from "../src/core/local-state.js";
@@ -152,4 +152,39 @@ test("discoverAndTrackLinkedDocuments reports an already-tracked target without 
 
   assert.equal(results[0].status, "already-tracked");
   assert.equal(results[0].family.id, preTracked.id);
+});
+
+test("rewriteLinks rewrites an in-scope href to /content/<resolved hash> and marks it with data-docmanager-hash", () => {
+  const source = write("a.html", "");
+  const bPath = write("b.html", "<html></html>");
+  const html = `<html><body><a href="b.html">B</a></body></html>`;
+
+  const { html: output, rewroteAny } = rewriteLinks(Buffer.from(html), source, (realPath) =>
+    realPath === bPath ? "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" : null,
+  );
+
+  assert.equal(rewroteAny, true);
+  assert.match(output, /href="\/content\/deadbeef/);
+  assert.match(output, /data-docmanager-hash="deadbeef/);
+});
+
+test("rewriteLinks leaves an href untouched when resolveHrefHash returns nothing (target not tracked)", () => {
+  const source = write("a.html", "");
+  write("b.html", "<html></html>");
+  const html = `<html><body><a href="b.html">B</a></body></html>`;
+
+  const { html: output, rewroteAny } = rewriteLinks(Buffer.from(html), source, () => null);
+
+  assert.equal(rewroteAny, false);
+  assert.match(output, /href="b\.html"/);
+});
+
+test("rewriteLinks leaves an out-of-scope href (absolute URL) completely untouched", () => {
+  const source = write("a.html", "");
+  const html = `<html><body><a href="https://example.com">ext</a></body></html>`;
+
+  const { html: output, rewroteAny } = rewriteLinks(Buffer.from(html), source, () => "should-never-be-called");
+
+  assert.equal(rewroteAny, false);
+  assert.match(output, /href="https:\/\/example\.com"/);
 });

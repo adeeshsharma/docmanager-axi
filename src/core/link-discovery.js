@@ -1,4 +1,4 @@
-import { parse } from "parse5";
+import { parse, serialize } from "parse5";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, extname, resolve, sep } from "node:path";
 import { trackPath } from "./track.js";
@@ -102,3 +102,57 @@ export async function discoverAndTrackLinkedDocuments(startRealPath, linkRoot) {
 
   return { results };
 }
+
+function rewriteAnchorHrefs(node, sourceRealPath, resolveHrefHash) {
+  let rewroteAny = false;
+  if (node.tagName === "a" && node.attrs) {
+    const hrefAttr = node.attrs.find((a) => a.name === "href");
+    if (hrefAttr) {
+      const resolved = resolveHrefTarget(hrefAttr.value, sourceRealPath);
+      if (resolved) {
+        const hash = resolveHrefHash(resolved);
+        if (hash) {
+          hrefAttr.value = `/content/${hash}`;
+          node.attrs.push({ name: "data-docmanager-hash", value: hash });
+          rewroteAny = true;
+        }
+      }
+    }
+  }
+  for (const child of node.childNodes ?? []) {
+    if (rewriteAnchorHrefs(child, sourceRealPath, resolveHrefHash)) rewroteAny = true;
+  }
+  return rewroteAny;
+}
+
+/**
+ * Rewrites every in-scope <a href> in `content` to /content/<hash>, where
+ * `hash` comes from `resolveHrefHash(realPath)` - called once per in-scope
+ * href with the real path it resolves to. Returning a falsy value leaves
+ * that href completely untouched (unresolved is never an error). Recomputed
+ * fresh on every call by design - no caching, matching diff.js's own
+ * normalization, which already recomputes every time: a cached rewrite of A
+ * would need invalidating the instant a linked document's head moves, even
+ * though A's own hash never changed.
+ */
+export function rewriteLinks(content, sourceRealPath, resolveHrefHash) {
+  const document = parse(content.toString("utf8"));
+  const rewroteAny = rewriteAnchorHrefs(document, sourceRealPath, resolveHrefHash);
+  return { html: serialize(document), rewroteAny };
+}
+
+// Injected into served content only when rewriteLinks actually rewrote at
+// least one href (no point adding a listener that will never fire).
+// Intercepts a click on a rewritten anchor specifically (identified by the
+// data-docmanager-hash rewriteLinks() marks it with, not by re-parsing its
+// href) and hands off to the parent page via postMessage instead of letting
+// the sandboxed iframe navigate itself - same postMessage-across-a-sandbox
+// pattern diff.js's own SCROLL_SYNC_SCRIPT already uses.
+export const LINK_CLICK_SCRIPT = `<script>(function(){
+  document.addEventListener('click', function(event) {
+    var a = event.target.closest ? event.target.closest('a[data-docmanager-hash]') : null;
+    if (!a) return;
+    event.preventDefault();
+    parent.postMessage({ source: 'docmanager-navigate-link', hash: a.getAttribute('data-docmanager-hash') }, '*');
+  });
+})();</script>`;
