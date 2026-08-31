@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { useIsolatedHome, cleanupHome } from "./helpers.js";
 import { trackPath, trackPaths, untrackFamilies, defaultSyntheticPath } from "../src/core/track.js";
 import { getFamily, deleteVersion } from "../src/core/store.js";
@@ -32,6 +32,33 @@ function writeHtml(relPath, content = "<html><body>doc</body></html>") {
 
 test("defaultSyntheticPath derives from basename, extension stripped", () => {
   assert.equal(defaultSyntheticPath("/x/y/report.html"), "/report");
+});
+
+test("trackPath defaults linkRoot to the file's own containing directory when not given", async () => {
+  const filePath = writeHtml("docs/report.html");
+  const { linkRoot, realPath } = await trackPath(filePath);
+  // realPath is realpathSync()'d internally (symlink-expanded - e.g. Mac's
+  // /var -> /private/var for tmpdir()-rooted paths), so linkRoot must be
+  // compared against dirname(realPath) itself, not a raw join() of the
+  // fixture's own un-resolved path.
+  assert.equal(linkRoot, dirname(realPath));
+});
+
+test("trackPaths auto-tracks a linked document alongside the one explicitly tracked", async () => {
+  writeHtml("a.html", `<html><body><a href="b.html">B</a></body></html>`);
+  writeHtml("b.html", "<html><body>b</body></html>");
+
+  const { results, summary } = await trackPaths([join(fixtureDir, "a.html")]);
+
+  assert.equal(summary.trackedCount, 2); // a.html itself, plus b.html via the link
+  const paths = results.filter((r) => r.status === "tracked").map((r) => r.family.syntheticPath).sort();
+  assert.deepEqual(paths, ["/a", "/b"]);
+});
+
+test("trackPaths does not re-crawl an already-tracked target's links", async () => {
+  writeHtml("a.html", `<html><body><a href="a.html">self</a></body></html>`); // trivial cycle guard smoke test at the trackPaths level
+  const { summary } = await trackPaths([join(fixtureDir, "a.html")]);
+  assert.equal(summary.trackedCount, 1);
 });
 
 test("trackPath creates a family; re-tracking the same real path is an idempotent no-op", async () => {

@@ -1,6 +1,7 @@
 import { parse } from "parse5";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, extname, resolve, sep } from "node:path";
+import { trackPath } from "./track.js";
 
 // Only a relative link to an existing .html file is in scope - everything
 // else (any URL scheme, protocol-relative, site-root-relative, mailto/tel,
@@ -60,4 +61,44 @@ export function discoverLinkTargets(content, sourceRealPath, linkRoot) {
     if (resolved && isWithinRoot(resolved, rootReal)) targets.add(resolved);
   }
   return [...targets];
+}
+
+/**
+ * BFS from `startRealPath`'s own links (not `startRealPath` itself - the
+ * caller is always the one who tracked the starting document; this only
+ * ever tracks what it LINKS TO). Bounded to `linkRoot` throughout, with a
+ * visited-real-paths guard so a cycle (A links to B links back to A)
+ * terminates instead of looping. An already-tracked target is still
+ * enqueued for further crawling (it just doesn't get a new family created)
+ * so the WHOLE reachable cluster within linkRoot ends up covered in one
+ * call, not just the newly-discovered subset of it.
+ */
+export async function discoverAndTrackLinkedDocuments(startRealPath, linkRoot) {
+  const visited = new Set([startRealPath]);
+  const queue = [startRealPath];
+  const results = [];
+
+  while (queue.length > 0) {
+    const currentRealPath = queue.shift();
+    let content;
+    try {
+      content = readFileSync(currentRealPath);
+    } catch {
+      continue; // vanished between discovery and read - not fatal to the rest of the crawl
+    }
+
+    for (const targetRealPath of discoverLinkTargets(content, currentRealPath, linkRoot)) {
+      if (visited.has(targetRealPath)) continue;
+      visited.add(targetRealPath);
+      try {
+        const { family, alreadyTracked } = await trackPath(targetRealPath, { linkRoot });
+        results.push({ path: targetRealPath, status: alreadyTracked ? "already-tracked" : "tracked", family });
+        queue.push(targetRealPath);
+      } catch (err) {
+        results.push({ path: targetRealPath, status: "error", error: err.message, code: err.code });
+      }
+    }
+  }
+
+  return { results };
 }

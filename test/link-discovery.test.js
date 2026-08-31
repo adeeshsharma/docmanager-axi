@@ -3,13 +3,22 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveHrefTarget, discoverLinkTargets } from "../src/core/link-discovery.js";
+import { resolveHrefTarget, discoverLinkTargets, discoverAndTrackLinkedDocuments } from "../src/core/link-discovery.js";
+import { useIsolatedHome, cleanupHome } from "./helpers.js";
+import { trackPath } from "../src/core/track.js";
+import { findByRealPath } from "../src/core/local-state.js";
 
 let fixtureDir;
+// Add alongside the existing beforeEach/afterEach - this module now also
+// needs an isolated docmanager home, since discoverAndTrackLinkedDocuments
+// calls trackPath() internally.
+let homeDir;
 beforeEach(() => {
+  homeDir = useIsolatedHome();
   fixtureDir = realpathSync(mkdtempSync(join(tmpdir(), "docmanager-linkdisc-")));
 });
 afterEach(() => {
+  cleanupHome(homeDir);
   rmSync(fixtureDir, { recursive: true, force: true });
 });
 
@@ -87,4 +96,60 @@ test("discoverLinkTargets deduplicates the same target linked twice", () => {
     fixtureDir,
   );
   assert.deepEqual(targets, [bPath]);
+});
+
+test("discoverAndTrackLinkedDocuments tracks a single linked document", async () => {
+  const a = write("a.html", `<html><body><a href="b.html">B</a></body></html>`);
+  write("b.html", "<html><body>b</body></html>");
+
+  const { results } = await discoverAndTrackLinkedDocuments(a, fixtureDir);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, "tracked");
+  assert.equal(findByRealPath(join(fixtureDir, "b.html")).familyId, results[0].family.id);
+});
+
+test("discoverAndTrackLinkedDocuments follows links transitively across the whole reachable cluster", async () => {
+  const a = write("a.html", `<html><body><a href="b.html">B</a></body></html>`);
+  write("b.html", `<html><body><a href="c.html">C</a></body></html>`);
+  write("c.html", "<html><body>c, no further links</body></html>");
+
+  const { results } = await discoverAndTrackLinkedDocuments(a, fixtureDir);
+
+  const trackedPaths = results.filter((r) => r.status === "tracked").map((r) => r.family.syntheticPath).sort();
+  assert.deepEqual(trackedPaths, ["/b", "/c"]);
+});
+
+test("discoverAndTrackLinkedDocuments terminates on a cycle (A links to B links back to A)", async () => {
+  const a = write("a.html", `<html><body><a href="b.html">B</a></body></html>`);
+  write("b.html", `<html><body><a href="a.html">back to A</a></body></html>`);
+
+  const { results } = await discoverAndTrackLinkedDocuments(a, fixtureDir);
+
+  // Only B gets tracked here - A is the crawl's own starting point, tracked
+  // separately by whatever called this (trackPaths()'s own integration),
+  // not by the crawl itself re-tracking its own start.
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, "tracked");
+});
+
+test("discoverAndTrackLinkedDocuments never leaves linkRoot", async () => {
+  mkdirSync(join(fixtureDir, "root"), { recursive: true });
+  const a = write("root/a.html", `<html><body><a href="../outside.html">X</a></body></html>`);
+  write("outside.html", "<html></html>");
+
+  const { results } = await discoverAndTrackLinkedDocuments(a, join(fixtureDir, "root"));
+
+  assert.equal(results.length, 0);
+});
+
+test("discoverAndTrackLinkedDocuments reports an already-tracked target without re-creating its family", async () => {
+  const a = write("a.html", `<html><body><a href="b.html">B</a></body></html>`);
+  const b = write("b.html", "<html></html>");
+  const { family: preTracked } = await trackPath(b, { linkRoot: fixtureDir });
+
+  const { results } = await discoverAndTrackLinkedDocuments(a, fixtureDir);
+
+  assert.equal(results[0].status, "already-tracked");
+  assert.equal(results[0].family.id, preTracked.id);
 });

@@ -1,5 +1,5 @@
 import { readFileSync, realpathSync, existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { basename, extname, join, relative, sep } from "node:path";
+import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { createFamily, getFamily, findFamilyBySyntheticPath, deleteFamily, renameFamily } from "./store.js";
 import {
   addMapping,
@@ -10,6 +10,7 @@ import {
   updateMappingSyntheticPath,
 } from "./local-state.js";
 import { editDir } from "./paths.js";
+import { discoverAndTrackLinkedDocuments } from "./link-discovery.js";
 
 // Every Lavish edit-and-relink cycle (ARCHITECTURE.md section 5) materializes
 // a NEW working file under editDir(), named after the pre-edit hash, then
@@ -50,7 +51,7 @@ export function defaultSyntheticPath(realPath) {
  * drift as a new version, reusing existing machinery rather than adding a
  * special case here.
  */
-export async function trackPath(inputPath, { as, relink } = {}) {
+export async function trackPath(inputPath, { as, relink, linkRoot } = {}) {
   if (!existsSync(inputPath)) {
     const err = new Error(`No such file: "${inputPath}"`);
     err.code = "FILE_NOT_FOUND";
@@ -58,9 +59,14 @@ export async function trackPath(inputPath, { as, relink } = {}) {
   }
 
   const realPath = realpathSync(inputPath);
+  // Every track defaults to being bounded to its own containing directory
+  // when no explicit root is given - this is what makes cross-document
+  // link-following work for the common single-file track case, not just a
+  // folder-track.
+  const effectiveLinkRoot = linkRoot ?? dirname(realPath);
   const existingMapping = findByRealPath(realPath);
   if (existingMapping) {
-    return { family: getFamily(existingMapping.familyId), alreadyTracked: true, relinked: false };
+    return { family: getFamily(existingMapping.familyId), alreadyTracked: true, relinked: false, linkRoot: effectiveLinkRoot, realPath };
   }
 
   const syntheticPath = as ?? defaultSyntheticPath(realPath);
@@ -106,8 +112,8 @@ export async function trackPath(inputPath, { as, relink } = {}) {
         }
       }
     }
-    addMapping({ syntheticPath, realPath, familyId: existingFamily.id });
-    return { family: existingFamily, alreadyTracked: false, relinked: true };
+    addMapping({ syntheticPath, realPath, familyId: existingFamily.id, linkRoot: effectiveLinkRoot });
+    return { family: existingFamily, alreadyTracked: false, relinked: true, linkRoot: effectiveLinkRoot, realPath };
   }
 
   const content = readFileSync(realPath);
@@ -116,8 +122,8 @@ export async function trackPath(inputPath, { as, relink } = {}) {
     content,
     sourceFileName: basename(realPath),
   });
-  addMapping({ syntheticPath, realPath, familyId: family.id });
-  return { family, alreadyTracked: false, relinked: false };
+  addMapping({ syntheticPath, realPath, familyId: family.id, linkRoot: effectiveLinkRoot });
+  return { family, alreadyTracked: false, relinked: false, linkRoot: effectiveLinkRoot, realPath };
 }
 
 // Directories that are near-universally vendor code, build output, or tool
@@ -240,30 +246,40 @@ export async function trackPaths(inputPaths, { as, relink } = {}) {
     }
 
     if (statSync(inputPath).isDirectory()) {
+      const rootReal = realpathSync(inputPath);
       const files = collectHtmlFiles(inputPath);
       if (files.length === 0) {
         results.push({ path: inputPath, status: "no-html-files-found" });
         continue;
       }
       for (const file of files) {
-        targets.push({ filePath: file, syntheticPath: syntheticPathForDiscoveredFile(inputPath, file) });
+        targets.push({ filePath: file, syntheticPath: syntheticPathForDiscoveredFile(inputPath, file), linkRoot: rootReal });
       }
     } else {
-      targets.push({ filePath: inputPath, syntheticPath: as });
+      targets.push({ filePath: inputPath, syntheticPath: as, linkRoot: undefined });
     }
   }
 
   for (const target of targets) {
     try {
-      const { family, alreadyTracked, relinked } = await trackPath(target.filePath, {
+      const { family, alreadyTracked, relinked, linkRoot: effectiveLinkRoot, realPath } = await trackPath(target.filePath, {
         as: target.syntheticPath,
         relink,
+        linkRoot: target.linkRoot,
       });
       results.push({
         path: target.filePath,
         status: relinked ? "relinked" : alreadyTracked ? "already-tracked" : "tracked",
         family,
       });
+      // Nothing new to discover from a no-op re-track - only crawl on a
+      // genuinely fresh track or a relink (which may have brought in
+      // content with links never seen before, e.g. reconnecting a
+      // snapshot-pulled folder).
+      if (!alreadyTracked) {
+        const { results: linkedResults } = await discoverAndTrackLinkedDocuments(realPath, effectiveLinkRoot);
+        results.push(...linkedResults);
+      }
     } catch (err) {
       results.push({
         path: target.filePath,
