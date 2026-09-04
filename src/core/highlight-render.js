@@ -67,18 +67,56 @@ export function buildHighlightScript(highlights) {
     return null;
   }
 
+  function firstTextDescendant(node) {
+    var walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+    return walker.nextNode();
+  }
+
+  function lastTextDescendant(node) {
+    var walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+    var last = null;
+    var current;
+    while ((current = walker.nextNode())) last = current;
+    return last;
+  }
+
   // A Range boundary's container is a Text node in the common case (a real
   // mouse-drag selection over rendered text). The rarer case - a boundary
-  // landing between child nodes rather than mid-text - normalizes to the
-  // first text descendant of the child at that position.
+  // landing between child nodes rather than mid-text (e.g. a real
+  // triple-click "select this line", which Chromium reports as an element
+  // container) - normalizes to a text position at that same point.
+  //
+  // The resolved child at offsetInContainer can itself be a bare Text node
+  // (a paragraph's own lone text child, or a whitespace-only node between
+  // block elements) - createTreeWalker(child, SHOW_TEXT).nextNode() can
+  // never return that child itself (a TreeWalker only ever returns
+  // descendants of its root, never the root), so treating it as "walk INTO
+  // this child for a text descendant" silently found nothing and aborted
+  // the whole highlight. Confirmed live: a real triple-click on a paragraph
+  // reports { container: <p>, offset: 0 }, where childNodes[0] is the
+  // paragraph's own text node directly - exactly this case.
+  //
+  // offsetInContainer landing out of bounds (>= childNodes.length, a valid
+  // Range position meaning "after every child") falls back to the last
+  // child - but that child can be an ELEMENT containing several text
+  // descendants (e.g. a paragraph with a link in it: text, <a>, text).
+  // Taking that element's FIRST text descendant's own length as "the end
+  // offset" silently produced a boundary partway through the paragraph
+  // instead of at its actual end - a wrong-but-plausible-looking highlight,
+  // not an aborted one. The out-of-bounds case must resolve to the LAST
+  // text descendant instead, at that node's own full length.
   function normalizeBoundary(container, offsetInContainer) {
     if (container.nodeType === Node.TEXT_NODE) return { node: container, offset: offsetInContainer };
-    var child = container.childNodes[offsetInContainer] || container.childNodes[container.childNodes.length - 1];
+    var inBounds = offsetInContainer < container.childNodes.length;
+    var child = inBounds ? container.childNodes[offsetInContainer] : container.childNodes[container.childNodes.length - 1];
     if (!child) return null;
-    var walker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT, null);
-    var text = walker.nextNode();
-    if (!text) return null;
-    return { node: text, offset: container.childNodes[offsetInContainer] ? 0 : text.nodeValue.length };
+    if (child.nodeType === Node.TEXT_NODE) return { node: child, offset: inBounds ? 0 : child.nodeValue.length };
+    if (inBounds) {
+      var first = firstTextDescendant(child);
+      return first ? { node: first, offset: 0 } : null;
+    }
+    var last = lastTextDescendant(child);
+    return last ? { node: last, offset: last.nodeValue.length } : null;
   }
 
   function computeOffset(container, offsetInContainer) {
