@@ -4,7 +4,7 @@ import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION } from "../version.js";
 import { trackPaths, untrackFamilies, renameTrackedDocument } from "./track.js";
-import { findFamilyByVersionHash, getFamily, mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags, moveFamilyToFolder } from "./store.js";
+import { addHighlight, removeHighlight, findFamilyByVersionHash, getFamily, mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags, moveFamilyToFolder } from "./store.js";
 import { findByRealPath, listMappings } from "./local-state.js";
 import { listFolders, getFolder, createFolder, renameFolder, reparentFolder, deleteFolder } from "./folders.js";
 import { diffVersions, renderHighlightedContent, injectIntoHead } from "./diff.js";
@@ -327,6 +327,38 @@ const ROUTES = [
       // Same reasoning as the revert route above: return the index-derived,
       // array-shaped family the UI actually renders directly, not
       // store.js's raw hash-keyed object.
+      return { status: 200, body: { family: getFamilyFromIndex(match[1]) } };
+    },
+  },
+  {
+    method: "POST",
+    pattern: /^\/families\/([^/]+)\/versions\/([^/]+)\/highlights$/,
+    handler: async (req, match) => {
+      const body = await readJsonBody(req);
+      const validColors = new Set(["yellow", "green", "blue", "pink"]);
+      if (!validColors.has(body.color)) {
+        return { status: 400, body: { error: "color must be one of yellow, green, blue, pink" } };
+      }
+      if (!Number.isInteger(body.startOffset) || !Number.isInteger(body.endOffset) || body.startOffset >= body.endOffset) {
+        return { status: 400, body: { error: "startOffset and endOffset (integers, startOffset < endOffset) are required" } };
+      }
+      const { highlight } = await addHighlight(match[1], match[2], {
+        color: body.color,
+        startOffset: body.startOffset,
+        endOffset: body.endOffset,
+      });
+      rebuildIndex();
+      broadcast("families-changed");
+      return { status: 200, body: { family: getFamilyFromIndex(match[1]), highlight } };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/families\/([^/]+)\/versions\/([^/]+)\/highlights\/([^/]+)$/,
+    handler: async (req, match) => {
+      await removeHighlight(match[1], match[2], match[3]);
+      rebuildIndex();
+      broadcast("families-changed");
       return { status: 200, body: { family: getFamilyFromIndex(match[1]) } };
     },
   },
