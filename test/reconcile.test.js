@@ -1,12 +1,14 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { useIsolatedHome, cleanupHome } from "./helpers.js";
 import { trackPath } from "../src/core/track.js";
 import { reconcile } from "../src/core/reconcile.js";
 import { getFamily, recordVersionIfChanged } from "../src/core/store.js";
+import { findByRealPath, listMappings } from "../src/core/local-state.js";
+import { docmanagerHome } from "../src/core/paths.js";
 
 let homeDir;
 let fixtureDir;
@@ -90,4 +92,42 @@ test("reconcile marks a live file behind a remotely-arrived head as behind-head,
   const after = getFamily(family.id);
   assert.equal(after.headVersion, advanced.headVersion, "head must not be rewritten backwards");
   assert.equal(Object.keys(after.versions).length, 2, "no spurious new version written");
+});
+
+test("reconcile re-crawls links when a version genuinely changes, auto-tracking a newly-added link", async () => {
+  const aPath = join(fixtureDir, "a.html");
+  writeFileSync(aPath, "<html><body>v1, no links yet</body></html>");
+  await trackPath(aPath);
+
+  writeFileSync(join(fixtureDir, "b.html"), "<html><body>b</body></html>");
+  writeFileSync(aPath, `<html><body>v2 <a href="b.html">B</a></body></html>`);
+
+  await reconcile();
+
+  // findByRealPath needs a realpathSync()'d path to match - trackPath()
+  // stores mappings by realpath internally (symlink-expanded, e.g. Mac's
+  // /var -> /private/var for tmpdir()-rooted paths), so a raw join() of
+  // fixtureDir would never match even when the crawl worked correctly.
+  const bMapping = findByRealPath(realpathSync(join(fixtureDir, "b.html")));
+  assert.ok(bMapping, "b.html should have been auto-tracked once the link to it was added and reconciled");
+});
+
+test("reconcile skips the link-crawl for a mapping with no linkRoot recorded (pre-existing project)", async () => {
+  const aPath = join(fixtureDir, "a.html");
+  writeFileSync(aPath, "<html><body>v1</body></html>");
+  const { family } = await trackPath(aPath);
+
+  // Simulate a mapping written before this feature existed - no linkRoot field.
+  const mappings = listMappings();
+  const mapping = mappings.find((m) => m.familyId === family.id);
+  delete mapping.linkRoot;
+  writeFileSync(join(docmanagerHome(), "local-state.json"), JSON.stringify(mappings, null, 2));
+
+  writeFileSync(join(fixtureDir, "b.html"), "<html></html>");
+  writeFileSync(aPath, `<html><body>v2 <a href="b.html">B</a></body></html>`);
+
+  // Must not throw, and must not auto-track b.html - there's no root to
+  // bound the crawl by, so it's skipped entirely rather than guessed at.
+  await reconcile();
+  assert.equal(findByRealPath(realpathSync(join(fixtureDir, "b.html"))), null);
 });

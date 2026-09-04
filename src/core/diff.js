@@ -103,7 +103,7 @@ function classifySelfBlocks(otherStrings, selfStrings) {
   return classifications;
 }
 
-function injectIntoHead(html, headContent) {
+export function injectIntoHead(html, headContent) {
   if (html.includes("<head>")) return html.replace("<head>", `<head>${headContent}`);
   if (/<body[^>]*>/.test(html)) return html.replace(/<body([^>]*)>/, `<body$1>${headContent}`);
   return headContent + html;

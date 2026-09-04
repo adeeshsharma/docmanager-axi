@@ -4,9 +4,12 @@ import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION } from "../version.js";
 import { trackPaths, untrackFamilies, renameTrackedDocument } from "./track.js";
-import { mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags, moveFamilyToFolder } from "./store.js";
+import { addHighlight, removeHighlight, findFamilyByVersionHash, getFamily, mergeFamilies, readContent, revertToVersion, deleteVersion, setFamilyTags, moveFamilyToFolder } from "./store.js";
+import { findByRealPath, listMappings } from "./local-state.js";
 import { listFolders, getFolder, createFolder, renameFolder, reparentFolder, deleteFolder } from "./folders.js";
-import { diffVersions, renderHighlightedContent } from "./diff.js";
+import { diffVersions, renderHighlightedContent, injectIntoHead } from "./diff.js";
+import { rewriteLinks, LINK_CLICK_SCRIPT } from "./link-discovery.js";
+import { buildHighlightScript } from "./highlight-render.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex, searchFamilies } from "./index.js";
 import { reconcile } from "./reconcile.js";
 import { suggestLinks } from "./suggest.js";
@@ -329,6 +332,38 @@ const ROUTES = [
     },
   },
   {
+    method: "POST",
+    pattern: /^\/families\/([^/]+)\/versions\/([^/]+)\/highlights$/,
+    handler: async (req, match) => {
+      const body = await readJsonBody(req);
+      const validColors = new Set(["yellow", "green", "blue", "pink"]);
+      if (!validColors.has(body.color)) {
+        return { status: 400, body: { error: "color must be one of yellow, green, blue, pink" } };
+      }
+      if (!Number.isInteger(body.startOffset) || !Number.isInteger(body.endOffset) || body.startOffset >= body.endOffset) {
+        return { status: 400, body: { error: "startOffset and endOffset (integers, startOffset < endOffset) are required" } };
+      }
+      const { highlight } = await addHighlight(match[1], match[2], {
+        color: body.color,
+        startOffset: body.startOffset,
+        endOffset: body.endOffset,
+      });
+      rebuildIndex();
+      broadcast("families-changed");
+      return { status: 200, body: { family: getFamilyFromIndex(match[1]), highlight } };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/families\/([^/]+)\/versions\/([^/]+)\/highlights\/([^/]+)$/,
+    handler: async (req, match) => {
+      await removeHighlight(match[1], match[2], match[3]);
+      rebuildIndex();
+      broadcast("families-changed");
+      return { status: 200, body: { family: getFamilyFromIndex(match[1]) } };
+    },
+  },
+  {
     method: "GET",
     pattern: /^\/families\/([^/]+)\/diff$/,
     handler: async (req, match) => {
@@ -486,9 +521,26 @@ function handleEvents(req, res) {
 // nothing else is ever a legitimate hash.
 const CONTENT_HASH_PATTERN = /^[0-9a-f]{64}$/;
 
-// Also kept separate from ROUTES: this serves raw HTML bytes for the
-// reading pane's iframe to load, not a JSON body.
-function handleContent(hash, res) {
+function resolveHrefHash(realPath) {
+  const mapping = findByRealPath(realPath);
+  if (!mapping) return null;
+  const family = getFamily(mapping.familyId);
+  return family ? family.headVersion : null;
+}
+
+// Also kept separate from ROUTES: this serves raw HTML bytes, not a JSON
+// body - and it serves more than just the reading pane's iframe. `families
+// export`/`families lavish` (materializing a version for Lavish Editor) and
+// the UI's own "Download"/"Open in new tab" all hit this exact same route
+// expecting byte-identical original content back - link-rewriting and
+// highlight injection must never apply to those, only to the reading
+// pane's own iframe, which explicitly opts in via ?render=1 (viewVersion()
+// in app.js). Getting this wrong once already broke `families export` in
+// practice (caught via this project's own test suite, not hypothetical) -
+// silently baking an injected script into content handed to Lavish Editor
+// for editing would have been considerably worse, risking that script
+// getting saved back as part of a real edited version.
+function handleContent(hash, res, render) {
   if (!CONTENT_HASH_PATTERN.test(hash)) {
     sendJson(res, 400, { error: "invalid content hash", code: "INVALID_CONTENT_HASH" });
     return;
@@ -498,8 +550,33 @@ function handleContent(hash, res) {
     sendJson(res, 404, { error: `No content for hash "${hash}"`, code: "CONTENT_NOT_FOUND" });
     return;
   }
+
+  let workingHtml = null;
+  let injections = "";
+  const servingFamily = render ? findFamilyByVersionHash(hash) : null;
+  if (servingFamily) {
+    const mapping = listMappings().find((m) => m.familyId === servingFamily.id);
+    if (mapping) {
+      const { html, rewroteAny } = rewriteLinks(content, mapping.realPath, resolveHrefHash);
+      if (rewroteAny) {
+        workingHtml = html;
+        injections += LINK_CLICK_SCRIPT;
+      }
+    }
+    // Always injected, even with zero stored highlights - this is what
+    // enables selecting text to create the FIRST one, not just replaying
+    // existing ones (see highlight-render.js's own comment on this).
+    injections += buildHighlightScript(servingFamily.versions[hash]?.highlights);
+  }
+
+  let output = content;
+  if (injections) {
+    const base = workingHtml ?? content.toString("utf8");
+    output = Buffer.from(injectIntoHead(base, injections), "utf8");
+  }
+
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  res.end(content);
+  res.end(output);
 }
 
 // Serves one version's content annotated with block-level highlighting
@@ -588,7 +665,7 @@ export function createServer() {
 
     const contentMatch = req.method === "GET" && url.pathname.match(/^\/content\/([^/]+)$/);
     if (contentMatch) {
-      handleContent(contentMatch[1], res);
+      handleContent(contentMatch[1], res, url.searchParams.get("render") === "1");
       return;
     }
 
