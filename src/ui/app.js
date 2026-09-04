@@ -1246,6 +1246,16 @@ window.addEventListener("message", (event) => {
       color: data.color,
       startOffset: data.startOffset,
       endOffset: data.endOffset,
+    }).then((result) => {
+      // Tell the iframe the real, server-issued id so it can replace the
+      // 'pending-...' placeholder its own optimistic <mark> is still
+      // wearing - otherwise a create-then-immediately-remove (no reload in
+      // between) would send a DELETE for an id the server never issued,
+      // and silently do nothing.
+      el.readingFrame.contentWindow?.postMessage(
+        { source: "docmanager-highlight-created-ack", pendingId: data.pendingId, realId: result.highlight.id },
+        "*",
+      );
     }).catch(() => {
       // The injected script already applied this optimistically client-side;
       // on a failed save, reload so the server's own stored state (which

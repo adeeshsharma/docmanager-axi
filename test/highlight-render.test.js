@@ -69,3 +69,18 @@ test("buildHighlightScript's create/remove paths branch on window.parent === win
   assert.match(script, /parent\.postMessage\(\{ source: 'docmanager-highlight-create'/);
   assert.match(script, /parent\.postMessage\(\{ source: 'docmanager-highlight-remove'/);
 });
+
+test("buildHighlightScript reassigns a newly created highlight's placeholder id to the real one once known, in both standalone and embedded paths", () => {
+  // A create is optimistic: the <mark> is wrapped with a 'pending-<timestamp>'
+  // id before the server call resolves. Removing that same highlight before
+  // any reload sends whatever id is currently on the mark - left as the
+  // placeholder, a remove would target an id the server never issued.
+  const script = buildHighlightScript({ familyId: "fam-1", hash: "hash-1", highlights: [] });
+  assert.match(script, /function reassignHighlightId\(pendingId, realId\)/);
+  // Standalone: the fetch's own response carries the real id.
+  assert.match(script, /res\.json\(\)\.then\(function\(body\) \{ reassignHighlightId\(pendingId, body\.highlight\.id\); \}\)/);
+  // Embedded: the create postMessage carries the pendingId along so the
+  // parent page (which owns the actual POST call) can echo the real id back.
+  assert.match(script, /pendingId: pendingId/);
+  assert.match(script, /docmanager-highlight-created-ack/);
+});

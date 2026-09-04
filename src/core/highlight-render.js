@@ -56,16 +56,34 @@ export function buildHighlightScript({ familyId, hash, highlights } = {}) {
     return '/families/' + encodeURIComponent(FAMILY_ID) + '/versions/' + encodeURIComponent(HASH) + '/highlights' + (suffix || '');
   }
 
-  function syncHighlightCreate(color, startOffset, endOffset) {
+  // A newly created highlight is optimistically wrapped in <mark> elements
+  // tagged with a client-side placeholder id ('pending-' + Date.now()) -
+  // the real, server-issued id isn't known until the create call resolves.
+  // Removing a highlight created moments earlier (no reload in between)
+  // sends whatever id is currently on the mark - left as the placeholder
+  // forever, that DELETE would target an id the server never issued and
+  // silently do nothing. Reassigning every mark sharing the placeholder id
+  // to the real one, the instant it's known, is what makes create-then-
+  // immediately-remove work without requiring a reload first.
+  function reassignHighlightId(pendingId, realId) {
+    document.querySelectorAll('mark[data-docmanager-highlight-id="' + pendingId + '"]').forEach(function(m) {
+      m.setAttribute('data-docmanager-highlight-id', realId);
+    });
+  }
+
+  function syncHighlightCreate(color, startOffset, endOffset, pendingId) {
     if (!STANDALONE) {
-      parent.postMessage({ source: 'docmanager-highlight-create', color: color, startOffset: startOffset, endOffset: endOffset }, '*');
+      parent.postMessage({ source: 'docmanager-highlight-create', color: color, startOffset: startOffset, endOffset: endOffset, pendingId: pendingId }, '*');
       return;
     }
     fetch(highlightsUrl(''), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ color: color, startOffset: startOffset, endOffset: endOffset }),
-    }).then(function(res) { if (!res.ok) location.reload(); }).catch(function() { location.reload(); });
+    }).then(function(res) {
+      if (!res.ok) { location.reload(); return; }
+      res.json().then(function(body) { reassignHighlightId(pendingId, body.highlight.id); });
+    }).catch(function() { location.reload(); });
   }
 
   function syncHighlightRemove(id) {
@@ -75,6 +93,20 @@ export function buildHighlightScript({ familyId, hash, highlights } = {}) {
     }
     fetch(highlightsUrl('/' + encodeURIComponent(id)), { method: 'DELETE' })
       .then(function(res) { if (!res.ok) location.reload(); }).catch(function() { location.reload(); });
+  }
+
+  // Embedded case's own half of the reassignment above: app.js (the parent
+  // page) owns the actual POST call and its response, so it posts the real
+  // id back once known. Ignoring any other message shape is deliberate -
+  // this iframe already listens to nothing else, but a stray/foreign
+  // message must never be mistaken for this one.
+  if (!STANDALONE) {
+    window.addEventListener('message', function(event) {
+      var data = event.data;
+      if (data && data.source === 'docmanager-highlight-created-ack') {
+        reassignHighlightId(data.pendingId, data.realId);
+      }
+    });
   }
 
   function isVisibleTextNode(node) {
@@ -256,8 +288,9 @@ export function buildHighlightScript({ familyId, hash, highlights } = {}) {
         hideToolbar();
         sel.removeAllRanges();
         if (startOffset == null || endOffset == null || startOffset >= endOffset) return;
-        wrapRange(startOffset, endOffset, color, 'pending-' + Date.now());
-        syncHighlightCreate(color, startOffset, endOffset);
+        var pendingId = 'pending-' + Date.now();
+        wrapRange(startOffset, endOffset, color, pendingId);
+        syncHighlightCreate(color, startOffset, endOffset, pendingId);
       });
       toolbar.appendChild(swatch);
     });
