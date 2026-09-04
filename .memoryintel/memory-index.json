@@ -8,8 +8,8 @@
     "summary": "Brownfield import from docs/superpowers/specs/2026-08-29-folders-design.md"
   },
   "context/activeContext.md": {
-    "lastUpdated": "2026-09-04T15:04:57.775Z",
-    "summary": "Prevents a fresh session from reintroducing any of the three real bugs this round found, or from \"simplifying\" a deliberately-chosen design (the offset coordinate system, the linkRoot boundary) back toward something that looks simpler but was already tried and rejected for a concrete reason."
+    "lastUpdated": "2026-09-04T16:42:20.953Z",
+    "summary": "real bug found via user testing after the highlights feature (PR #15) merged and released as 1.3.0"
   },
   "business/productContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.600Z",
@@ -20,8 +20,8 @@
     "summary": "The three bugs are exactly the kind of thing a fresh session needs to know NOT to reintroduce - especially the ?render=1 gating, since it's easy to imagine a future change to handleContent() re-coupling rendering behavior to the bare route without realizing families export/lavish depend on that route staying pristine."
   },
   "technical/patterns.md": {
-    "lastUpdated": "2026-08-29T16:35:50.602Z",
-    "summary": "Brownfield import from memory-bank/systemPatterns.md"
+    "lastUpdated": "2026-09-04T16:42:20.955Z",
+    "summary": "prevent the same TreeWalker-on-a-leaf-node and first-vs-last-descendant mistakes from recurring in similar selection/range-based code"
   },
   "technical/techContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.602Z",
