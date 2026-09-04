@@ -173,7 +173,7 @@ const ROUTES = [
       if (!body.hash) {
         return { status: 400, body: { error: "hash is required" } };
       }
-      const { changed } = await revertToVersion(match[1], body.hash);
+      const { changed, filesSynced } = await revertToVersion(match[1], body.hash, { syncFile: !!body.syncFile });
       if (changed) {
         rebuildIndex();
         broadcast("families-changed");
@@ -183,7 +183,7 @@ const ROUTES = [
       // renders this response directly rather than always re-fetching, so
       // the shape has to match what renderTimeline()/populateCompareSelects()
       // actually expect.
-      return { status: 200, body: { changed, family: getFamilyFromIndex(match[1]) } };
+      return { status: 200, body: { changed, filesSynced, family: getFamilyFromIndex(match[1]) } };
     },
   },
   {

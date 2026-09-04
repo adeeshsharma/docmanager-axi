@@ -8,8 +8,8 @@
     "summary": "Brownfield import from docs/superpowers/specs/2026-08-29-folders-design.md"
   },
   "context/activeContext.md": {
-    "lastUpdated": "2026-09-04T20:12:59.127Z",
-    "summary": "user-requested feature: a unified highlighting experience whether a document is opened inside docmanager or in a new browser tab"
+    "lastUpdated": "2026-09-04T20:41:21.548Z",
+    "summary": "user-reported friction between revert and delete-version, resolved without weakening either feature's existing safety guarantees"
   },
   "business/productContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.600Z",
@@ -20,8 +20,8 @@
     "summary": "The three bugs are exactly the kind of thing a fresh session needs to know NOT to reintroduce - especially the ?render=1 gating, since it's easy to imagine a future change to handleContent() re-coupling rendering behavior to the bare route without realizing families export/lavish depend on that route staying pristine."
   },
   "technical/patterns.md": {
-    "lastUpdated": "2026-09-04T20:20:55.932Z",
-    "summary": "real bug found via manual testing while extending the unified-highlighting feature; document so future optimistic-update code in this codebase reconciles placeholder ids explicitly"
+    "lastUpdated": "2026-09-04T20:41:21.550Z",
+    "summary": "document the general resolution pattern (explicit opt-in bridge, not weakening a safety guard) for future cases where two independently-correct invariants in this codebase turn out to collide"
   },
   "technical/techContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.602Z",

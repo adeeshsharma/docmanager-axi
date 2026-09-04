@@ -1097,8 +1097,18 @@ el.revertButton.addEventListener("click", async () => {
   );
   if (!confirmed) return;
 
+  // A second, separate confirm rather than a single combined question - the
+  // two have genuinely different consequences (a reversible history change
+  // vs. overwriting a real file) and defaulting to "no" on the disk write
+  // keeps the historical default (revert never touches disk) the path of
+  // least surprise. Asked only after the revert itself is confirmed, since
+  // declining this one should still let the plain revert go through.
+  const syncFile = window.confirm(
+    "Also overwrite the real file on disk with this version's content? Recommended if you plan to delete the version you're reverting away from - otherwise it stays \"live\" and can't be deleted (its content still matches this file).",
+  );
+
   try {
-    await api("POST", `/families/${state.selectedId}/revert`, { hash: state.viewingHash });
+    await api("POST", `/families/${state.selectedId}/revert`, { hash: state.viewingHash, syncFile });
     await refreshSelectedFamily();
     // The version just reverted TO is now genuinely current - re-viewing it
     // directly (not through the "newer version" banner) is correct here,
