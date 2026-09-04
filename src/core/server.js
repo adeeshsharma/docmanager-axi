@@ -9,6 +9,7 @@ import { findByRealPath, listMappings } from "./local-state.js";
 import { listFolders, getFolder, createFolder, renameFolder, reparentFolder, deleteFolder } from "./folders.js";
 import { diffVersions, renderHighlightedContent, injectIntoHead } from "./diff.js";
 import { rewriteLinks, LINK_CLICK_SCRIPT } from "./link-discovery.js";
+import { buildHighlightScript } from "./highlight-render.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex, searchFamilies } from "./index.js";
 import { reconcile } from "./reconcile.js";
 import { suggestLinks } from "./suggest.js";
@@ -544,14 +545,26 @@ function handleContent(hash, res) {
     return;
   }
 
-  let output = content;
+  let workingHtml = null;
+  let injections = "";
   const servingFamily = findFamilyByVersionHash(hash);
   if (servingFamily) {
     const mapping = listMappings().find((m) => m.familyId === servingFamily.id);
     if (mapping) {
       const { html, rewroteAny } = rewriteLinks(content, mapping.realPath, resolveHrefHash);
-      if (rewroteAny) output = Buffer.from(injectIntoHead(html, LINK_CLICK_SCRIPT), "utf8");
+      if (rewroteAny) {
+        workingHtml = html;
+        injections += LINK_CLICK_SCRIPT;
+      }
     }
+    const highlightScript = buildHighlightScript(servingFamily.versions[hash]?.highlights);
+    if (highlightScript) injections += highlightScript;
+  }
+
+  let output = content;
+  if (injections) {
+    const base = workingHtml ?? content.toString("utf8");
+    output = Buffer.from(injectIntoHead(base, injections), "utf8");
   }
 
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
