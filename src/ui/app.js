@@ -1217,18 +1217,46 @@ window.addEventListener("message", (event) => {
 // same reasoning the diff-scroll listener above already uses.
 window.addEventListener("message", (event) => {
   const data = event.data;
-  if (!data || data.source !== "docmanager-navigate-link" || event.source !== el.readingFrame.contentWindow) return;
-  // The server only ever rewrites a link to a family's CURRENT head hash,
-  // so a lookup by headVersion against the already-loaded family list is
-  // always enough - no extra API call needed.
-  const target = state.families.find((f) => f.headVersion === data.hash);
-  if (!target) return;
+  if (!data || event.source !== el.readingFrame.contentWindow) return;
 
-  if (state.selectedId && state.viewingHash) {
-    state.linkNavHistory.push({ familyId: state.selectedId, hash: state.viewingHash });
+  if (data.source === "docmanager-navigate-link") {
+    // The server only ever rewrites a link to a family's CURRENT head hash,
+    // so a lookup by headVersion against the already-loaded family list is
+    // always enough - no extra API call needed.
+    const target = state.families.find((f) => f.headVersion === data.hash);
+    if (!target) return;
+    if (state.selectedId && state.viewingHash) {
+      state.linkNavHistory.push({ familyId: state.selectedId, hash: state.viewingHash });
+    }
+    el.backToSourceButton.hidden = false;
+    selectFamily(target.id, { preserveLinkHistory: true });
+    return;
   }
-  el.backToSourceButton.hidden = false;
-  selectFamily(target.id, { preserveLinkHistory: true });
+
+  if (data.source === "docmanager-highlight-create") {
+    if (!state.selectedId || !state.viewingHash) return;
+    api("POST", `/families/${state.selectedId}/versions/${encodeURIComponent(state.viewingHash)}/highlights`, {
+      color: data.color,
+      startOffset: data.startOffset,
+      endOffset: data.endOffset,
+    }).catch(() => {
+      // The injected script already applied this optimistically client-side;
+      // on a failed save, reload so the server's own stored state (which
+      // never got the new highlight) reasserts itself - the same
+      // no-rollback-UI approach this codebase already uses for tag/rename
+      // actions elsewhere, rather than hand-tracking optimistic state.
+      el.readingFrame.src = el.readingFrame.src;
+    });
+    return;
+  }
+
+  if (data.source === "docmanager-highlight-remove") {
+    if (!state.selectedId || !state.viewingHash) return;
+    api("DELETE", `/families/${state.selectedId}/versions/${encodeURIComponent(state.viewingHash)}/highlights/${data.highlightId}`).catch(() => {
+      el.readingFrame.src = el.readingFrame.src;
+    });
+    return;
+  }
 });
 
 el.backToSourceButton.addEventListener("click", () => {
