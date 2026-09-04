@@ -24,9 +24,12 @@ Usage:
   docmanager families view <id>       Show one family's version history
   docmanager families diff <id> <hashA> <hashB>
                                        Show what changed between two versions
-  docmanager families revert <id> <hash>
+  docmanager families revert <id> <hash> [--sync-file]
                                        Make an older version current again (docmanager's history only -
-                                       never touches the real file on disk)
+                                       never touches the real file on disk, unless --sync-file is given,
+                                       which also overwrites the real tracked file with that version's
+                                       content - useful before deleting the version reverted away from,
+                                       which otherwise refuses since the file still holds its content)
   docmanager families delete-version <id> <hash>
                                        Permanently remove one version's record (not the whole document -
                                        see untrack for that). Refuses on a family's only remaining version
@@ -350,19 +353,24 @@ async function familiesCommand(args) {
         "Run `docmanager families view <id>` to see valid hashes",
       ]);
     }
-    let changed, family;
+    const { flags } = parseFlags(args.slice(3), ["sync-file"], ["sync-file"]);
+    const syncFile = !!flags["sync-file"];
+    let changed, family, filesSynced;
     try {
-      ({ changed, family } = await coreClient.revertVersion(id, hash));
+      ({ changed, family, filesSynced } = await coreClient.revertVersion(id, hash, syncFile));
     } catch (err) {
       throw toAxiError(err);
     }
     return {
       reverted: changed,
       ...(changed ? {} : { note: "already at this version, no changes made" }),
+      ...(filesSynced?.length ? { filesSynced } : {}),
       family: familySummary(family),
       help: [
         `Run \`docmanager families view ${family.id}\` to see the full history`,
-        "This only changes docmanager's own history - the real file on disk is never touched",
+        syncFile
+          ? "The real tracked file was also overwritten with this version's content (--sync-file)"
+          : "This only changes docmanager's own history - the real file on disk is never touched",
       ],
     };
   }

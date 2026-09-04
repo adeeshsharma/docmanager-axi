@@ -266,8 +266,19 @@ export async function mergeFamilies(olderFamilyId, newerFamilyId) {
  * No version is added or removed here, only which one headVersion points at
  * - the full history stays intact and visible, exactly like moving a git
  * branch pointer to an earlier commit without deleting anything after it.
+ *
+ * `syncFile: true` additionally overwrites every live, locally-mapped real
+ * file for this family with the reverted-to version's own content - opt-in
+ * and explicit, never the default. Without it, the real file keeps whatever
+ * content it already had (by design - see ARCHITECTURE.md section 3.4), which
+ * means the version just reverted AWAY from is still "live" on disk and
+ * `deleteVersion()` will correctly refuse to delete it (VERSION_STILL_LIVE) -
+ * deleting a version whose exact content a tracked file still holds would
+ * just have it silently resurrected on the next reconcile. Syncing the file
+ * first is what makes that old version genuinely safe to delete afterward,
+ * without loosening that guard at all.
  */
-export async function revertToVersion(familyId, hash) {
+export async function revertToVersion(familyId, hash, { syncFile = false } = {}) {
   return serialize(async () => {
     const family = getFamily(familyId);
     if (!family) {
@@ -281,13 +292,24 @@ export async function revertToVersion(familyId, hash) {
       throw err;
     }
     if (family.headVersion === hash) {
-      return { changed: false, family };
+      return { changed: false, family, filesSynced: [] };
     }
 
     family.headVersion = hash;
     writeFamilyUnlocked(family);
     await commitAll(`Revert ${family.syntheticPath} to ${hash}`);
-    return { changed: true, family };
+
+    const filesSynced = [];
+    if (syncFile) {
+      const content = readContent(hash);
+      for (const mapping of listMappings()) {
+        if (mapping.familyId !== familyId || !existsSync(mapping.realPath)) continue;
+        writeFileSync(mapping.realPath, content);
+        filesSynced.push(mapping.realPath);
+      }
+    }
+
+    return { changed: true, family, filesSynced };
   });
 }
 
