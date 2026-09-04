@@ -25,13 +25,57 @@ function safeJsonPayload(value) {
  * VISIBLE text (script/style excluded), walked in document order - see
  * the design doc's own reasoning for why this, not a DOM structural path,
  * is what makes independent create/remove of multiple highlights safe.
+ *
+ * Unified highlighting in a standalone tab: this same script runs whether
+ * the content is served into the reading pane's sandboxed iframe or opened
+ * directly as a plain browser tab ("Open in new tab") - both are
+ * `?render=1` requests (see server.js's handleContent()). `window.parent
+ * === window` is true only for the latter (an iframe's parent is always a
+ * different window object). The sandboxed iframe has no choice but to
+ * relay through postMessage - it has no origin of its own to make a
+ * same-origin fetch() from (sandbox="allow-scripts", no
+ * allow-same-origin). A standalone tab has no parent to relay through, but
+ * IS loaded from docmanager's own origin, so it can call the highlight API
+ * directly - see syncHighlightCreate/syncHighlightRemove below.
  */
-export function buildHighlightScript(highlights) {
+export function buildHighlightScript({ familyId, hash, highlights } = {}) {
   const payload = safeJsonPayload(highlights ?? []);
 
   return `<script>(function(){
   var HIGHLIGHTS = ${payload};
+  var FAMILY_ID = ${safeJsonPayload(familyId ?? "")};
+  var HASH = ${safeJsonPayload(hash ?? "")};
+  var STANDALONE = window.parent === window;
   var COLORS = { yellow: '#fff59d', green: '#a5d6a7', blue: '#90caf9', pink: '#f48fb1' };
+
+  // On a failed direct save, reload so the server's own stored state (which
+  // never received the change) reasserts itself - the same no-rollback-UI
+  // approach app.js's own postMessage handlers already use for the
+  // embedded case, kept identical here for the standalone one.
+  function highlightsUrl(suffix) {
+    return '/families/' + encodeURIComponent(FAMILY_ID) + '/versions/' + encodeURIComponent(HASH) + '/highlights' + (suffix || '');
+  }
+
+  function syncHighlightCreate(color, startOffset, endOffset) {
+    if (!STANDALONE) {
+      parent.postMessage({ source: 'docmanager-highlight-create', color: color, startOffset: startOffset, endOffset: endOffset }, '*');
+      return;
+    }
+    fetch(highlightsUrl(''), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ color: color, startOffset: startOffset, endOffset: endOffset }),
+    }).then(function(res) { if (!res.ok) location.reload(); }).catch(function() { location.reload(); });
+  }
+
+  function syncHighlightRemove(id) {
+    if (!STANDALONE) {
+      parent.postMessage({ source: 'docmanager-highlight-remove', highlightId: id }, '*');
+      return;
+    }
+    fetch(highlightsUrl('/' + encodeURIComponent(id)), { method: 'DELETE' })
+      .then(function(res) { if (!res.ok) location.reload(); }).catch(function() { location.reload(); });
+  }
 
   function isVisibleTextNode(node) {
     var el = node.parentNode;
@@ -213,7 +257,7 @@ export function buildHighlightScript(highlights) {
         sel.removeAllRanges();
         if (startOffset == null || endOffset == null || startOffset >= endOffset) return;
         wrapRange(startOffset, endOffset, color, 'pending-' + Date.now());
-        parent.postMessage({ source: 'docmanager-highlight-create', color: color, startOffset: startOffset, endOffset: endOffset }, '*');
+        syncHighlightCreate(color, startOffset, endOffset);
       });
       toolbar.appendChild(swatch);
     });
@@ -252,12 +296,23 @@ export function buildHighlightScript(highlights) {
     removeBtn.addEventListener('mousedown', function(e) { e.preventDefault(); });
     removeBtn.addEventListener('click', function() {
       var id = mark.getAttribute('data-docmanager-highlight-id');
-      var parentNode = mark.parentNode;
-      while (mark.firstChild) parentNode.insertBefore(mark.firstChild, mark);
-      parentNode.removeChild(mark);
-      parentNode.normalize();
+      // wrapRange() creates one <mark> PER OVERLAPPING TEXT NODE, all sharing
+      // this same id - a selection spanning more than one text node (e.g. a
+      // triple-click "select this line" that includes the trailing
+      // whitespace/newline node after a paragraph, confirmed via manual
+      // testing) produces more than one <mark> for a single highlight.
+      // Unwrapping only the ONE hovered/clicked mark left the others behind
+      // client-side - the record was still fully deleted server-side, so it
+      // only ever "fixed itself" on the next reload, never immediately.
+      var marks = document.querySelectorAll('mark[data-docmanager-highlight-id="' + id + '"]');
+      marks.forEach(function(m) {
+        var parentNode = m.parentNode;
+        while (m.firstChild) parentNode.insertBefore(m.firstChild, m);
+        parentNode.removeChild(m);
+        parentNode.normalize();
+      });
       hideRemoveBtn();
-      parent.postMessage({ source: 'docmanager-highlight-remove', highlightId: id }, '*');
+      syncHighlightRemove(id);
     });
     document.body.appendChild(removeBtn);
   });

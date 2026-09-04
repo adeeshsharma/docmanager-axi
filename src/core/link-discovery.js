@@ -145,14 +145,23 @@ export function rewriteLinks(content, sourceRealPath, resolveHrefHash) {
 // least one href (no point adding a listener that will never fire).
 // Intercepts a click on a rewritten anchor specifically (identified by the
 // data-docmanager-hash rewriteLinks() marks it with, not by re-parsing its
-// href) and hands off to the parent page via postMessage instead of letting
-// the sandboxed iframe navigate itself - same postMessage-across-a-sandbox
-// pattern diff.js's own SCROLL_SYNC_SCRIPT already uses.
+// href). Embedded in the reading pane's sandboxed iframe, it hands off to
+// the parent page via postMessage instead of navigating itself - same
+// postMessage-across-a-sandbox pattern diff.js's own SCROLL_SYNC_SCRIPT
+// already uses. A standalone tab ("Open in new tab") has no parent to hand
+// off to, so it navigates its own location instead - same unified
+// same-tab-navigation behavior a normal link would have, just resolved to
+// the target's current version hash instead of a raw file path.
 export const LINK_CLICK_SCRIPT = `<script>(function(){
   document.addEventListener('click', function(event) {
     var a = event.target.closest ? event.target.closest('a[data-docmanager-hash]') : null;
     if (!a) return;
     event.preventDefault();
-    parent.postMessage({ source: 'docmanager-navigate-link', hash: a.getAttribute('data-docmanager-hash') }, '*');
+    var hash = a.getAttribute('data-docmanager-hash');
+    if (window.parent === window) {
+      location.href = '/content/' + hash + '?render=1';
+      return;
+    }
+    parent.postMessage({ source: 'docmanager-navigate-link', hash: hash }, '*');
   });
 })();</script>`;

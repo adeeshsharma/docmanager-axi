@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveHrefTarget, discoverLinkTargets, discoverAndTrackLinkedDocuments, rewriteLinks } from "../src/core/link-discovery.js";
+import { resolveHrefTarget, discoverLinkTargets, discoverAndTrackLinkedDocuments, rewriteLinks, LINK_CLICK_SCRIPT } from "../src/core/link-discovery.js";
 import { useIsolatedHome, cleanupHome } from "./helpers.js";
 import { trackPath } from "../src/core/track.js";
 import { findByRealPath } from "../src/core/local-state.js";
@@ -187,4 +187,10 @@ test("rewriteLinks leaves an out-of-scope href (absolute URL) completely untouch
 
   assert.equal(rewroteAny, false);
   assert.match(output, /href="https:\/\/example\.com"/);
+});
+
+test("LINK_CLICK_SCRIPT navigates the tab itself when standalone, and posts to the parent when embedded", () => {
+  assert.match(LINK_CLICK_SCRIPT, /window\.parent === window/);
+  assert.match(LINK_CLICK_SCRIPT, /location\.href = '\/content\/' \+ hash \+ '\?render=1'/);
+  assert.match(LINK_CLICK_SCRIPT, /parent\.postMessage\(\{ source: 'docmanager-navigate-link'/);
 });
