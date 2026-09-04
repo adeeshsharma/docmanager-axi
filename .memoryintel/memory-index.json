@@ -20,8 +20,8 @@
     "summary": "The three bugs are exactly the kind of thing a fresh session needs to know NOT to reintroduce - especially the ?render=1 gating, since it's easy to imagine a future change to handleContent() re-coupling rendering behavior to the bare route without realizing families export/lavish depend on that route staying pristine."
   },
   "technical/patterns.md": {
-    "lastUpdated": "2026-09-04T20:12:59.128Z",
-    "summary": "document the runtime-context-detection pattern so future injected-script features (not just highlights/links) reuse it instead of re-deriving it"
+    "lastUpdated": "2026-09-04T20:20:55.932Z",
+    "summary": "real bug found via manual testing while extending the unified-highlighting feature; document so future optimistic-update code in this codebase reconciles placeholder ids explicitly"
   },
   "technical/techContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.602Z",
