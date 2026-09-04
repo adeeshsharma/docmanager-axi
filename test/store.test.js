@@ -14,6 +14,8 @@ import {
   listFamilyIds,
   readContent,
   findFamilyByVersionHash,
+  addHighlight,
+  removeHighlight,
 } from "../src/core/store.js";
 import { runGit } from "../src/core/git.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex } from "../src/core/index.js";
@@ -148,4 +150,79 @@ test("findFamilyByVersionHash finds the family owning a given version hash", asy
 test("findFamilyByVersionHash returns null for an unknown hash", async () => {
   await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
   assert.equal(findFamilyByVersionHash("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"), null);
+});
+
+test("addHighlight creates the highlights array on a version's first highlight", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  const { family: updated, highlight } = await addHighlight(family.id, family.headVersion, {
+    color: "yellow",
+    startOffset: 0,
+    endOffset: 5,
+  });
+
+  assert.equal(updated.versions[family.headVersion].highlights.length, 1);
+  assert.equal(highlight.color, "yellow");
+  assert.equal(highlight.startOffset, 0);
+  assert.equal(highlight.endOffset, 5);
+  assert.ok(highlight.id);
+  assert.ok(highlight.createdAt);
+});
+
+test("addHighlight appends, preserving creation order, across multiple highlights", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  const { highlight: first } = await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 0, endOffset: 5 });
+  const { family: updated, highlight: second } = await addHighlight(family.id, family.headVersion, { color: "blue", startOffset: 10, endOffset: 15 });
+
+  const stored = updated.versions[family.headVersion].highlights;
+  assert.equal(stored.length, 2);
+  assert.equal(stored[0].id, first.id);
+  assert.equal(stored[1].id, second.id);
+});
+
+test("addHighlight throws FAMILY_NOT_FOUND for an unknown family", async () => {
+  await assert.rejects(
+    addHighlight("nonexistent-id", "anyhash", { color: "yellow", startOffset: 0, endOffset: 5 }),
+    (err) => err.code === "FAMILY_NOT_FOUND",
+  );
+});
+
+test("addHighlight throws VERSION_NOT_FOUND for an unknown hash", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  await assert.rejects(
+    addHighlight(family.id, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef", { color: "yellow", startOffset: 0, endOffset: 5 }),
+    (err) => err.code === "VERSION_NOT_FOUND",
+  );
+});
+
+test("removeHighlight removes exactly the targeted id, leaving others untouched", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  const { highlight: first } = await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 0, endOffset: 5 });
+  const { highlight: second } = await addHighlight(family.id, family.headVersion, { color: "blue", startOffset: 10, endOffset: 15 });
+
+  const { family: updated } = await removeHighlight(family.id, family.headVersion, first.id);
+
+  const stored = updated.versions[family.headVersion].highlights;
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].id, second.id);
+});
+
+test("removeHighlight on an unknown id is a no-op, not an error", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 0, endOffset: 5 });
+
+  const { family: updated } = await removeHighlight(family.id, family.headVersion, "nonexistent-highlight-id");
+
+  assert.equal(updated.versions[family.headVersion].highlights.length, 1);
+});
+
+test("removeHighlight throws FAMILY_NOT_FOUND for an unknown family", async () => {
+  await assert.rejects(removeHighlight("nonexistent-id", "anyhash", "anyid"), (err) => err.code === "FAMILY_NOT_FOUND");
+});
+
+test("removeHighlight throws VERSION_NOT_FOUND for an unknown hash", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  await assert.rejects(
+    removeHighlight(family.id, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "anyid"),
+    (err) => err.code === "VERSION_NOT_FOUND",
+  );
 });

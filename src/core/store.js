@@ -387,6 +387,67 @@ export async function moveFamilyToFolder(familyId, folderId) {
 }
 
 /**
+ * Adds one highlight to a version's own record. Colors are a fixed,
+ * caller-validated enum (server.js's route handler owns that check, the
+ * same split setFamilyTags() already draws between "store trusts its
+ * input" and "the route validates request shape"). The id is always
+ * server-generated (randomUUID(), matching family.id's own convention),
+ * never client-supplied.
+ */
+export async function addHighlight(familyId, hash, { color, startOffset, endOffset }) {
+  return serialize(async () => {
+    const family = getFamily(familyId);
+    if (!family) {
+      const err = new Error(`No family with id "${familyId}"`);
+      err.code = "FAMILY_NOT_FOUND";
+      throw err;
+    }
+    if (!family.versions[hash]) {
+      const err = new Error(`Family "${familyId}" has no version "${hash}"`);
+      err.code = "VERSION_NOT_FOUND";
+      throw err;
+    }
+
+    const highlight = { id: randomUUID(), color, startOffset, endOffset, createdAt: new Date().toISOString() };
+    const version = family.versions[hash];
+    version.highlights = [...(version.highlights ?? []), highlight];
+
+    writeFamilyUnlocked(family);
+    await commitAll(`Add highlight to ${family.syntheticPath}`);
+    return { family, highlight };
+  });
+}
+
+/**
+ * Removes exactly one highlight by id. A missing id is a no-op, not an
+ * error - the desired end state ("this highlight doesn't exist") is
+ * already true, the same idempotent-no-op philosophy trackPath() already
+ * applies to re-tracking an already-tracked path.
+ */
+export async function removeHighlight(familyId, hash, highlightId) {
+  return serialize(async () => {
+    const family = getFamily(familyId);
+    if (!family) {
+      const err = new Error(`No family with id "${familyId}"`);
+      err.code = "FAMILY_NOT_FOUND";
+      throw err;
+    }
+    if (!family.versions[hash]) {
+      const err = new Error(`Family "${familyId}" has no version "${hash}"`);
+      err.code = "VERSION_NOT_FOUND";
+      throw err;
+    }
+
+    const version = family.versions[hash];
+    version.highlights = (version.highlights ?? []).filter((h) => h.id !== highlightId);
+
+    writeFamilyUnlocked(family);
+    await commitAll(`Remove highlight from ${family.syntheticPath}`);
+    return { family };
+  });
+}
+
+/**
  * Permanently removes ONE version's record from a family - not the whole
  * family (see deleteFamily/untrack for that). Heals the supersedes chain so
  * history stays continuous instead of leaving a dangling pointer to a hash
