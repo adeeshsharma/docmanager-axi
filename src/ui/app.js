@@ -502,7 +502,12 @@ function downloadFileName(hash) {
 
 function viewVersion(hash) {
   state.viewingHash = hash;
-  el.readingFrame.src = `/content/${hash}`;
+  // Only the reading pane's own iframe opts into rendering (cross-document
+  // link rewriting, highlight injection) via ?render=1 - "Open in new tab"
+  // and "Download" must stay byte-identical to the original tracked
+  // content, the same guarantee `families export`/`families lavish` rely
+  // on for this exact route.
+  el.readingFrame.src = `/content/${hash}?render=1`;
   el.openInTab.href = `/content/${hash}`;
   el.downloadVersion.href = `/content/${hash}`;
   el.downloadVersion.download = downloadFileName(hash);

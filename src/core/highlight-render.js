@@ -11,9 +11,15 @@ function safeJsonPayload(value) {
  * Builds the full injected client-side behavior for per-version highlights:
  * replaying stored highlights on load, showing a color-swatch toolbar on
  * text selection, and a hover-triggered remove affordance on an existing
- * highlight. Returns null when there's nothing to inject (no stored
- * highlights) - matches rewriteLinks()'s own rewroteAny gate in
- * link-discovery.js, no point adding a listener that will never fire.
+ * highlight. Always returns a script, even for a version with zero stored
+ * highlights - unlike rewriteLinks()'s rewroteAny gate (where "nothing to
+ * rewrite" really does mean nothing to do), this script has a second job
+ * beyond replaying existing highlights: enabling the user to CREATE the
+ * first one via selection, which is needed on every document regardless of
+ * whether any highlights exist yet. Gating this on an empty array would
+ * silently disable highlight creation for the single most common case (a
+ * document with none yet) - caught via manual browser verification, not
+ * hypothetical.
  *
  * Coordinate system: character offset into the document's flattened
  * VISIBLE text (script/style excluded), walked in document order - see
@@ -21,9 +27,7 @@ function safeJsonPayload(value) {
  * is what makes independent create/remove of multiple highlights safe.
  */
 export function buildHighlightScript(highlights) {
-  if (!highlights || highlights.length === 0) return null;
-
-  const payload = safeJsonPayload(highlights);
+  const payload = safeJsonPayload(highlights ?? []);
 
   return `<script>(function(){
   var HIGHLIGHTS = ${payload};
@@ -124,8 +128,25 @@ export function buildHighlightScript(highlights) {
   // doc's own reasoning: offsets are stable regardless of other highlights,
   // but replay must still reproduce the same sequence capture-time selection
   // was made against, across separate sessions.
-  HIGHLIGHTS.forEach(function(h) {
-    try { wrapRange(h.startOffset, h.endOffset, h.color, h.id); } catch (e) { /* one bad record must never break the rest */ }
+  //
+  // injectIntoHead() places this script as the FIRST CHILD of <body> (or
+  // inside <head>, if the served document has one) - it executes
+  // synchronously at that exact point in parsing, before any of the
+  // document's own real content has been added to the DOM yet. A
+  // document.body truthiness check is NOT enough to guard against this:
+  // <body> itself already exists by the time a script placed right after
+  // its opening tag runs, but body has zero children at that instant -
+  // collectTextNodes() would walk an empty body and silently find nothing
+  // to wrap, no error, no highlight. Caught via manual browser verification
+  // against a real fixture with no explicit <head> tag - the try/catch
+  // below was silently swallowing this exact case, masking it as if it
+  // were "a genuinely bad stored record," which it wasn't. Always
+  // deferring to DOMContentLoaded (never conditionally) is what actually
+  // guarantees the rest of the document has been parsed first.
+  document.addEventListener('DOMContentLoaded', function() {
+    HIGHLIGHTS.forEach(function(h) {
+      try { wrapRange(h.startOffset, h.endOffset, h.color, h.id); } catch (e) { /* one bad record must never break the rest */ }
+    });
   });
 
   var toolbar = null;

@@ -528,13 +528,19 @@ function resolveHrefHash(realPath) {
   return family ? family.headVersion : null;
 }
 
-// Also kept separate from ROUTES: this serves raw HTML bytes for the
-// reading pane's iframe to load, not a JSON body. Cross-document <a href>
-// links are rewritten to the target's CURRENT head hash on every request
-// (never cached - see link-discovery.js's own reasoning), so a link always
-// points at whichever version is current right now regardless of what was
-// current when this content was originally tracked.
-function handleContent(hash, res) {
+// Also kept separate from ROUTES: this serves raw HTML bytes, not a JSON
+// body - and it serves more than just the reading pane's iframe. `families
+// export`/`families lavish` (materializing a version for Lavish Editor) and
+// the UI's own "Download"/"Open in new tab" all hit this exact same route
+// expecting byte-identical original content back - link-rewriting and
+// highlight injection must never apply to those, only to the reading
+// pane's own iframe, which explicitly opts in via ?render=1 (viewVersion()
+// in app.js). Getting this wrong once already broke `families export` in
+// practice (caught via this project's own test suite, not hypothetical) -
+// silently baking an injected script into content handed to Lavish Editor
+// for editing would have been considerably worse, risking that script
+// getting saved back as part of a real edited version.
+function handleContent(hash, res, render) {
   if (!CONTENT_HASH_PATTERN.test(hash)) {
     sendJson(res, 400, { error: "invalid content hash", code: "INVALID_CONTENT_HASH" });
     return;
@@ -547,7 +553,7 @@ function handleContent(hash, res) {
 
   let workingHtml = null;
   let injections = "";
-  const servingFamily = findFamilyByVersionHash(hash);
+  const servingFamily = render ? findFamilyByVersionHash(hash) : null;
   if (servingFamily) {
     const mapping = listMappings().find((m) => m.familyId === servingFamily.id);
     if (mapping) {
@@ -557,8 +563,10 @@ function handleContent(hash, res) {
         injections += LINK_CLICK_SCRIPT;
       }
     }
-    const highlightScript = buildHighlightScript(servingFamily.versions[hash]?.highlights);
-    if (highlightScript) injections += highlightScript;
+    // Always injected, even with zero stored highlights - this is what
+    // enables selecting text to create the FIRST one, not just replaying
+    // existing ones (see highlight-render.js's own comment on this).
+    injections += buildHighlightScript(servingFamily.versions[hash]?.highlights);
   }
 
   let output = content;
@@ -657,7 +665,7 @@ export function createServer() {
 
     const contentMatch = req.method === "GET" && url.pathname.match(/^\/content\/([^/]+)$/);
     if (contentMatch) {
-      handleContent(contentMatch[1], res);
+      handleContent(contentMatch[1], res, url.searchParams.get("render") === "1");
       return;
     }
 

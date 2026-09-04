@@ -2,8 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildHighlightScript } from "../src/core/highlight-render.js";
 
-test("buildHighlightScript returns null for an empty highlights array", () => {
-  assert.equal(buildHighlightScript([]), null);
+test("buildHighlightScript still returns a real script for an empty highlights array - selection/creation must work on a document with none yet", () => {
+  const script = buildHighlightScript([]);
+  assert.ok(script.startsWith("<script>"));
+  assert.match(script, /docmanager-highlight-create/);
+});
+
+test("buildHighlightScript treats undefined the same as an empty array", () => {
+  const script = buildHighlightScript(undefined);
+  assert.ok(script.startsWith("<script>"));
+  assert.match(script, /HIGHLIGHTS = \[\]/);
 });
 
 test("buildHighlightScript embeds the highlights as JSON inside a script tag", () => {
