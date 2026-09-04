@@ -8,8 +8,8 @@
     "summary": "Brownfield import from docs/superpowers/specs/2026-08-29-folders-design.md"
   },
   "context/activeContext.md": {
-    "lastUpdated": "2026-09-04T16:42:20.953Z",
-    "summary": "real bug found via user testing after the highlights feature (PR #15) merged and released as 1.3.0"
+    "lastUpdated": "2026-09-04T20:12:59.127Z",
+    "summary": "user-requested feature: a unified highlighting experience whether a document is opened inside docmanager or in a new browser tab"
   },
   "business/productContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.600Z",
@@ -20,8 +20,8 @@
     "summary": "The three bugs are exactly the kind of thing a fresh session needs to know NOT to reintroduce - especially the ?render=1 gating, since it's easy to imagine a future change to handleContent() re-coupling rendering behavior to the bare route without realizing families export/lavish depend on that route staying pristine."
   },
   "technical/patterns.md": {
-    "lastUpdated": "2026-09-04T16:42:20.955Z",
-    "summary": "prevent the same TreeWalker-on-a-leaf-node and first-vs-last-descendant mistakes from recurring in similar selection/range-based code"
+    "lastUpdated": "2026-09-04T20:12:59.128Z",
+    "summary": "document the runtime-context-detection pattern so future injected-script features (not just highlights/links) reuse it instead of re-deriving it"
   },
   "technical/techContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.602Z",

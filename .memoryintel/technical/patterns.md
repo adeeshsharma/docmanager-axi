@@ -42,7 +42,7 @@ Unrelated load-bearing gotcha in the same file (highlight-render.js): a Range bo
 ## Security posture for a loopback server
 
 Binding to `127.0.0.1` stops network access but not a malicious browser tab on the same machine — browsers don't block a page from calling `http://127.0.0.1` (the same mechanism behind DNS-rebinding attacks). The core checks the `Origin` header on every request: rejects any Origin that isn't the UI's own, accepts requests with no Origin at all (how the CLI's own HTTP client calls in, since only browsers send one).
-
+The reading pane's sandboxed iframe (sandbox="allow-scripts", no allow-same-origin) and a standalone "Open in new tab" browser tab both receive the exact same served, rendered content and the exact same injected client-side script - the script itself detects which context it's running in via `window.parent === window` (true only when there's no enclosing iframe) and picks postMessage-to-parent vs. direct same-origin fetch() accordingly, rather than the server building two different variants of the injected script. This is the general pattern for any future injected behavior that needs to work identically in both contexts: branch at runtime inside one script, don't fork the script itself.
 ## Snapshot / cross-machine sync
 
 - `snapshot push`/`snapshot pull` are just `git push`/`git fetch+merge` against the store repo, reusing the same git dependency as the version-diffing engine.
