@@ -140,6 +140,39 @@ test("families diff and families revert work end to end through the real binary"
   assert.match(badRevert.stdout, /VERSION_NOT_FOUND/);
 });
 
+test("families revert --sync-file writes the real file, making the version reverted away from safely deletable", async () => {
+  const filePath = join(fixtureDir, "revert-syncfile-me.html");
+  writeFileSync(filePath, "<html><body>v1</body></html>");
+  const tracked = await runCli(["track", filePath]);
+  const id = tracked.stdout.match(/id: (\S+)/)[1];
+
+  writeFileSync(filePath, "<html><body>v2, a real change</body></html>");
+  await runCli(["status"]); // reconciles, captures v2 as head
+
+  const view = await runCli(["families", "view", id]);
+  const hashes = [...view.stdout.matchAll(/^\s*([0-9a-f]{64}),/gm)].map((m) => m[1]);
+  const [oldHash, newHash] = hashes;
+
+  // Without --sync-file, the file still holds v2's content - deleting v2's
+  // version record is correctly refused (the exact friction being fixed).
+  await runCli(["families", "revert", id, oldHash]);
+  const blockedDelete = await runCli(["families", "delete-version", id, newHash]);
+  assert.equal(blockedDelete.code, 1);
+  assert.match(blockedDelete.stdout, /VERSION_STILL_LIVE/);
+
+  // Put the file back to v2 (a legitimate state - the file never actually
+  // changed away from it), then revert again WITH --sync-file this time.
+  await runCli(["families", "revert", id, newHash]);
+  const revertWithSync = await runCli(["families", "revert", id, oldHash, "--sync-file"]);
+  assert.equal(revertWithSync.code, 0, revertWithSync.stderr);
+  assert.match(revertWithSync.stdout, /reverted: true/);
+  assert.match(revertWithSync.stdout, /filesSynced/);
+  assert.equal(readFileSync(filePath, "utf-8"), "<html><body>v1</body></html>");
+
+  const cleanDelete = await runCli(["families", "delete-version", id, newHash]);
+  assert.equal(cleanDelete.code, 0, cleanDelete.stderr);
+});
+
 test("search finds a tracked document by content, and reports zero results honestly for no match", async () => {
   const filePath = join(fixtureDir, "searchable.html");
   writeFileSync(filePath, "<html><head><title>Findable Doc</title></head><body><p>a very particular sentence about zephyrs</p></body></html>");
