@@ -502,13 +502,15 @@ function downloadFileName(hash) {
 
 function viewVersion(hash) {
   state.viewingHash = hash;
-  // Only the reading pane's own iframe opts into rendering (cross-document
-  // link rewriting, highlight injection) via ?render=1 - "Open in new tab"
-  // and "Download" must stay byte-identical to the original tracked
-  // content, the same guarantee `families export`/`families lavish` rely
-  // on for this exact route.
+  // The reading pane's iframe AND "Open in new tab" both opt into rendering
+  // (cross-document link rewriting, highlight injection) via ?render=1 -
+  // opening a document in its own tab is meant to be a fully equivalent,
+  // unified reading/highlighting experience, not a stripped-down fallback.
+  // Only "Download" stays byte-identical to the original tracked content,
+  // the same guarantee `families export`/`families lavish` rely on for
+  // this exact route.
   el.readingFrame.src = `/content/${hash}?render=1`;
-  el.openInTab.href = `/content/${hash}`;
+  el.openInTab.href = `/content/${hash}?render=1`;
   el.downloadVersion.href = `/content/${hash}`;
   el.downloadVersion.download = downloadFileName(hash);
   el.versionBanner.hidden = true;
@@ -1254,6 +1256,16 @@ window.addEventListener("message", (event) => {
       color: data.color,
       startOffset: data.startOffset,
       endOffset: data.endOffset,
+    }).then((result) => {
+      // Tell the iframe the real, server-issued id so it can replace the
+      // 'pending-...' placeholder its own optimistic <mark> is still
+      // wearing - otherwise a create-then-immediately-remove (no reload in
+      // between) would send a DELETE for an id the server never issued,
+      // and silently do nothing.
+      el.readingFrame.contentWindow?.postMessage(
+        { source: "docmanager-highlight-created-ack", pendingId: data.pendingId, realId: result.highlight.id },
+        "*",
+      );
     }).catch(() => {
       // The injected script already applied this optimistically client-side;
       // on a failed save, reload so the server's own stored state (which

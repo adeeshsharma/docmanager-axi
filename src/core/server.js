@@ -531,15 +531,17 @@ function resolveHrefHash(realPath) {
 // Also kept separate from ROUTES: this serves raw HTML bytes, not a JSON
 // body - and it serves more than just the reading pane's iframe. `families
 // export`/`families lavish` (materializing a version for Lavish Editor) and
-// the UI's own "Download"/"Open in new tab" all hit this exact same route
-// expecting byte-identical original content back - link-rewriting and
-// highlight injection must never apply to those, only to the reading
-// pane's own iframe, which explicitly opts in via ?render=1 (viewVersion()
-// in app.js). Getting this wrong once already broke `families export` in
-// practice (caught via this project's own test suite, not hypothetical) -
-// silently baking an injected script into content handed to Lavish Editor
-// for editing would have been considerably worse, risking that script
-// getting saved back as part of a real edited version.
+// the UI's own "Download" all hit this exact same route expecting
+// byte-identical original content back - link-rewriting and highlight
+// injection must never apply to those, only to callers that explicitly opt
+// in via ?render=1: the reading pane's own iframe AND the UI's "Open in new
+// tab" link, both set by app.js, since a plain browser tab is meant to be a
+// fully equivalent, unified way to read and highlight a document, not a
+// stripped-down fallback. Getting this wrong once already broke `families
+// export` in practice (caught via this project's own test suite, not
+// hypothetical) - silently baking an injected script into content handed to
+// Lavish Editor for editing would have been considerably worse, risking
+// that script getting saved back as part of a real edited version.
 function handleContent(hash, res, render) {
   if (!CONTENT_HASH_PATTERN.test(hash)) {
     sendJson(res, 400, { error: "invalid content hash", code: "INVALID_CONTENT_HASH" });
@@ -566,7 +568,15 @@ function handleContent(hash, res, render) {
     // Always injected, even with zero stored highlights - this is what
     // enables selecting text to create the FIRST one, not just replaying
     // existing ones (see highlight-render.js's own comment on this).
-    injections += buildHighlightScript(servingFamily.versions[hash]?.highlights);
+    // familyId/hash travel with it so the injected script can call the
+    // highlight API directly when it detects it's running standalone (a
+    // plain new tab, not embedded in docmanager's own reading pane iframe)
+    // - see highlight-render.js's STANDALONE check.
+    injections += buildHighlightScript({
+      familyId: servingFamily.id,
+      hash,
+      highlights: servingFamily.versions[hash]?.highlights,
+    });
   }
 
   let output = content;
