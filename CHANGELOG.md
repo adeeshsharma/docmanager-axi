@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 From the first real release onward, new entries below this point are generated automatically by [release-please](https://github.com/googleapis/release-please) from [Conventional Commits](https://www.conventionalcommits.org/) - see `RELEASING.md`. The `[Unreleased]` section below predates that and is hand-written, describing the full pre-release v1 feature set as a single snapshot rather than a per-commit log.
 
+## [1.6.0](https://github.com/adeeshsharma/docmanager-axi/compare/docmanager-axi-v1.5.0...docmanager-axi-v1.6.0) (2026-09-13)
+
+
+### Features
+
+* cascading highlights and debounced automatic version capture ([babd71d](https://github.com/adeeshsharma/docmanager-axi/commit/babd71d24f955ff3657352bbb7999bc437455036))
+
 ## [1.5.0](https://github.com/adeeshsharma/docmanager-axi/compare/docmanager-axi-v1.4.0...docmanager-axi-v1.5.0) (2026-09-04)
 
 
