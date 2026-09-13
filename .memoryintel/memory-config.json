@@ -1,4 +1,7 @@
 {
   "initializedAt": "2026-08-29T16:35:28.648Z",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "generatedFileHashes": {
+    "instructions.md": "1e8e27d9a47a71b4c852947f515ad4377f9cbefd8aff3153b29640b6e183c5ec"
+  }
 }

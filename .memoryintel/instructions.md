@@ -23,9 +23,16 @@ time. Both commands are safe to run more than once - `import`'s already-imported
 skipped, not duplicated, and `scan` never writes anything at all.
 
 ## Session start
-Run `memoryintel load [--domain technical|business|research]` and treat its output as project context.
-Its manifest reports each loaded file's `lines`, `ceiling`, and `status` (`over`/`under`) — see
-"Compaction" below for what to do about a file marked `over`.
+Run `memoryintel load` (no arguments — the hook does this automatically) and treat its output as
+project context. Its manifest reports each loaded file's `lines`, `ceiling`, and `status`
+(`over`/`under`) — see "Compaction" below for what to do about a file marked `over`.
+
+`load` with no `--domain` automatically carries forward whichever domain the most recent
+`update` actually touched, so continuing yesterday's technical work loads `technical/*` again
+without you having to ask for it. The one case this doesn't cover is deliberately switching to a
+domain nothing was just written to — check the "Other memory available" list at the bottom of
+`load`'s output and, if the task is about a topic listed there, run
+`memoryintel load --domain <domain>` yourself before continuing.
 
 ## Session end
 If your work changed project understanding (new architecture, feature, decision, integration, or
@@ -57,11 +64,22 @@ outright rather than degrading gracefully, so match it exactly rather than impro
 - `context/currentMentalModel.md` is the one exception to `action`: its row's `content` replaces
   the file's entire content verbatim, regardless of what `action`/`section` say.
 
+**`update` also accepts a plain JSON array of the same rows instead of TOON**, auto-detected by
+whether the file/stdin content starts with `[` or `{` after trimming - if you'd rather
+`JSON.stringify` a plan than hand-write TOON's quoting rule above, this is the safer default:
+`[{"file": "path/to/file.md", "action": "append", "section": "Section Heading", "content": "New
+paragraph to add.", "reason": "Why this changed"}]`. Same fields, same required order doesn't
+matter (JSON is keyed, not positional), same `context/currentMentalModel.md` exception. Neither
+format is preferred - use whichever you're less likely to get wrong.
+
 Also include a row for `context/currentMentalModel.md` whenever the update is more than a small,
 localized fact — anything that shifts what the project *is* or where it currently stands (not
 every single decision/progress entry needs one). Unlike every other file, it is a **whole-file
-replace**: rewrite the entire current-understanding narrative from scratch each time, in plain
-prose, not another append-only log. This is the file the dashboard's "Current understanding"
+replace**: submit the file's complete new content each time, not a diff or an append. "Whole-file"
+describes the wire format, not how much work it is to produce - start from the copy `load` already
+gave you this session, keep whatever is still accurate, and rewrite only the parts that changed.
+The result should read as one coherent narrative in plain prose, not an append-only log stitched
+together from old and new fragments. This is the file the dashboard's "Current understanding"
 section renders directly — a stale or never-written one is the single most common way this
 project's memory looks broken to a human glancing at the dashboard, even when every other file is
 being updated correctly.
@@ -95,10 +113,12 @@ committed — not because updating was hard, but because nothing in the session 
 before the worktree's job was considered done.
 
 ## Compaction
-A file marked `status: over` in `load`'s manifest has grown past its configured line ceiling.
-This is a signal, not a command — compact it only when it's a sensible moment to (the same
-judgment you already apply to whether to update at all), by adding a row to your update-plan with
-one extra field, `kind: compress`, and `action: replace` against the section that's grown large.
+A file marked `status: over` in `load`'s manifest has grown past its configured char ceiling —
+`update` also flags this itself, in the same call that pushes a file over, rather than waiting for
+the next `load`. This is a signal, not a command — compact it only when it's a sensible moment to
+(the same judgment you already apply to whether to update at all), by adding a row to your
+update-plan with one extra field, `kind: compress`, and `action: replace` against the section
+that's grown large.
 `update` will only apply that row if the target file is currently git-clean — if it isn't, the row
 is rejected and the file is left untouched; commit the current state first, then retry. Aim to
 compact to comfortably under the ceiling, not exactly at it.
@@ -116,8 +136,10 @@ recoverable from git history — it just won't be loaded by default anymore. Bec
   your summary can't answer, you compressed too much — keep more.
 
 The ceiling itself is configurable in `memory-config.json` under a `compression` key
-(`defaultCeilingLines`, and optional `domainOverrides` keyed by domain, e.g. `"technical": 500`)
-— the built-in default is 300 lines if unset.
+(`defaultCeilingChars`, and optional `domainOverrides` keyed by domain, e.g. `"technical": 20000`)
+— the built-in default is 12000 chars if unset. `update` also flags a file that crosses the
+ceiling right after the write that pushed it over, in the same turn — don't wait for the next
+`load` to notice.
 
 ## Dashboard
 If the user asks to turn off the dashboard/web UI, run `memoryintel dashboard disable`. This is a
