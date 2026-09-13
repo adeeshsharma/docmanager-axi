@@ -5,6 +5,19 @@ import { docmanagerHome } from "./paths.js";
 import { runGit } from "./git.js";
 import { listMappings } from "./local-state.js";
 import { isSameNormalizedHtml, extractFlattenedVisibleText } from "./html-normalize.js";
+import { getSettings } from "./settings.js";
+
+// DOCMANAGER_VERSION_DEBOUNCE_MS overrides the settings-configured debounce
+// window with a raw millisecond value - the same "settings value, env var
+// escape hatch" shape daemon.js's own DOCMANAGER_IDLE_TIMEOUT_MS already
+// uses. settings.js's versionDebounceSeconds is deliberately a small fixed
+// enum (a real product knob for real editing sessions); this exists for
+// automation that needs to record several distinct versions of the same
+// family within the same test run without a real multi-second wait.
+function versionDebounceMs() {
+  const override = process.env.DOCMANAGER_VERSION_DEBOUNCE_MS;
+  return override !== undefined ? Number(override) : getSettings().versionDebounceSeconds * 1000;
+}
 
 export function storePath() {
   return join(docmanagerHome(), "store");
@@ -230,6 +243,32 @@ function remapHighlights(oldContent, newContent, highlights) {
  * reasoning. A version only gets a `highlights` key at all if something
  * actually carried over, matching addHighlight()'s own lazy-creation
  * convention for the field.
+ *
+ * Debounced: a save that lands within `versionDebounceSeconds` (settings.js)
+ * of the current head's own createdAt AMENDS that head's slot in place
+ * (same position in the supersedes chain, content/hash swapped, createdAt
+ * refreshed to now) instead of stacking a new entry - this is what stops an
+ * AI or human's rapid burst of saves a few seconds apart from each becoming
+ * its own permanent version. Refreshing createdAt on every amend, rather
+ * than comparing against the ORIGINAL createdAt, is what makes this a real
+ * trailing-edge debounce: the quiet-period deadline keeps sliding forward as
+ * long as saves keep coming, the same way a UI input debounce resets its
+ * timer on every keystroke. Once a save finally lands outside the window,
+ * it becomes a genuine new version, and the amended slot's own history
+ * (whatever it supersedes) is left exactly where it was.
+ *
+ * The family's ROOT version (supersedes: null) is never amended, regardless
+ * of timing - it always becomes a real, permanent version on its first
+ * edit. This is load-bearing for cross-machine sync, not just a style
+ * choice: two machines that independently pull the same root and then each
+ * edit it within the debounce window would otherwise each amend their own
+ * copy away locally, leaving no shared version hash for sync.js's
+ * unionFamilyVersions() to recognize as a common ancestor - confirmed as a
+ * real, reproducible break via this project's own sync test suite, not a
+ * hypothetical. Every non-root version stays fully debounce-eligible: an
+ * amend always preserves whatever its own parent already was, so at least
+ * one shared, stable anchor (the root, at minimum) always survives for any
+ * two histories forked from it to merge back against.
  */
 export async function recordVersionIfChanged(familyId, content, sourceFileName) {
   return serialize(async () => {
@@ -246,23 +285,29 @@ export async function recordVersionIfChanged(familyId, content, sourceFileName) 
     }
 
     const parentHash = family.headVersion;
-    const parentHighlights = family.versions[parentHash].highlights ?? [];
+    const parentVersion = family.versions[parentHash];
+    const parentHighlights = parentVersion.highlights ?? [];
 
-    const now = new Date().toISOString();
+    const debounceMs = versionDebounceMs();
+    const now = new Date();
+    const withinDebounceWindow =
+      parentVersion.supersedes !== null && now - new Date(parentVersion.createdAt) < debounceMs;
+
     const newVersion = {
-      createdAt: now,
+      createdAt: now.toISOString(),
       sourceFileName: sourceFileName ?? null,
-      supersedes: parentHash,
+      supersedes: withinDebounceWindow ? parentVersion.supersedes : parentHash,
     };
     if (parentHighlights.length > 0) {
       const carried = remapHighlights(readContent(parentHash), content, parentHighlights);
       if (carried.length > 0) newVersion.highlights = carried;
     }
 
+    if (withinDebounceWindow) delete family.versions[parentHash];
     family.versions[hash] = newVersion;
     family.headVersion = hash;
     writeFamilyUnlocked(family);
-    await commitAll(`New version of ${family.syntheticPath}`);
+    await commitAll(withinDebounceWindow ? `Amend version of ${family.syntheticPath} (debounced)` : `New version of ${family.syntheticPath}`);
     return { changed: true, family };
   });
 }

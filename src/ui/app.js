@@ -85,6 +85,7 @@ const el = {
   stopCoreButton: document.getElementById("stop-core-button"),
   stopCoreStatus: document.getElementById("stop-core-status"),
   snapshotRemote: document.getElementById("snapshot-remote"),
+  versionDebounce: document.getElementById("version-debounce"),
   settingsStatus: document.getElementById("settings-status"),
   trackForm: document.getElementById("track-form"),
   trackPaths: document.getElementById("track-paths"),
@@ -689,6 +690,7 @@ async function loadSettings() {
   el.clearTokenButton.hidden = !settings.snapshotRemoteTokenSet;
   el.tokenStatus.textContent = settings.snapshotRemoteTokenSet ? "A token is currently saved." : "";
   updateTokenFieldAvailability();
+  el.versionDebounce.value = String(settings.versionDebounceSeconds ?? 20);
 }
 
 // Persisted client-side only (this browser, this machine) - it's a display
@@ -802,7 +804,10 @@ el.settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   el.settingsStatus.textContent = "Saving…";
   try {
-    const patch = { snapshotRemote: el.snapshotRemote.value.trim() || null };
+    const patch = {
+      snapshotRemote: el.snapshotRemote.value.trim() || null,
+      versionDebounceSeconds: Number(el.versionDebounce.value),
+    };
     // The token field always starts empty (the real value is never sent
     // back), so an empty field here means "no change," not "clear it" -
     // only include it in the patch when the user actually typed something

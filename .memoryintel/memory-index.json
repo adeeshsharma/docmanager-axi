@@ -8,8 +8,8 @@
     "summary": "Brownfield import from docs/superpowers/specs/2026-08-29-folders-design.md"
   },
   "context/activeContext.md": {
-    "lastUpdated": "2026-09-13T15:13:14.393Z",
-    "summary": "prevents a future session from reintroducing the old never-inherited behavior thinking it's still the intended design"
+    "lastUpdated": "2026-09-13T15:39:26.707Z",
+    "summary": "prevents a future session from being confused by version counts not matching edit counts, or from reintroducing the root-amend bug, or from not knowing why useIsolatedHome() sets this env var"
   },
   "business/productContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.600Z",
@@ -28,8 +28,8 @@
     "summary": "Auto-detected stack/integration facts (memoryintel sync)"
   },
   "context/currentMentalModel.md": {
-    "lastUpdated": "2026-09-13T15:13:14.391Z",
-    "summary": "cascading highlights shipped 2026-09-13, reversing a prior documented decision; version number was also stale (1.2.1 -> 1.5.0)"
+    "lastUpdated": "2026-09-13T15:39:26.705Z",
+    "summary": "two features shipped same session: cascading highlights and debounced version capture, the latter uncovering a real cross-machine sync bug and requiring a project-wide test fixture pattern"
   },
   "business/roadmap.md": {
     "lastUpdated": "2026-09-05T10:35:32.048Z",
@@ -44,7 +44,7 @@
     "summary": "Auto-detected stack/integration facts (memoryintel sync)"
   },
   "context/decisions.md": {
-    "lastUpdated": "2026-09-13T15:13:14.392Z",
-    "summary": "direct user feature request that reverses a previously load-bearing, documented design decision - future sessions must not silently revert to the old behavior"
+    "lastUpdated": "2026-09-13T15:39:26.706Z",
+    "summary": "a future session touching recordVersionIfChanged, sync.js, or test/helpers.js's useIsolatedHome() must not weaken/remove the root-amend guard or the env-var test override without re-deriving why both exist"
   }
 }

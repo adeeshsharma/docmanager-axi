@@ -15,6 +15,14 @@ import { closeIndexHandle } from "../src/core/index.js";
 export function useIsolatedHome() {
   const dir = mkdtempSync(join(tmpdir(), "docmanager-test-"));
   process.env.DOCMANAGER_HOME = dir;
+  // Zeroed by default: most test files record several versions of the same
+  // family in quick succession purely as scaffolding for an unrelated
+  // scenario (revert, diff, delete-version...) and don't want the real
+  // version-debounce window (store.js's recordVersionIfChanged) silently
+  // amending those into one version just because the test ran fast.
+  // store.test.js's own debounce tests explicitly delete this override in
+  // their own beforeEach to exercise the real window.
+  process.env.DOCMANAGER_VERSION_DEBOUNCE_MS = "0";
   return dir;
 }
 
@@ -24,5 +32,6 @@ export function cleanupHome(dir) {
   // stays open for the rest of this test file's process otherwise.
   closeIndexHandle();
   delete process.env.DOCMANAGER_HOME;
+  delete process.env.DOCMANAGER_VERSION_DEBOUNCE_MS;
   rmSync(dir, { recursive: true, force: true });
 }
