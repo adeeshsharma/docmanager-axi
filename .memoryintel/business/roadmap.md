@@ -3,4 +3,6 @@
 ## Next
 
 ## Later
-**Version notes**: let a version optionally carry a short free-text message (like a git commit message) explaining WHY it changed, not just what changed - the timeline currently shows content diffs but nothing about intent. Proposed as an additive field on the version record (same pattern as `family.folderId`), surfaced in the timeline/family view and the Lavish relink flow. Not yet designed or approved - a user idea captured for later brainstorming, not a committed roadmap item.
+(none currently)
+
+**Considered and dropped: version notes.** Brainstormed in full (a free-text note field on a version record, like a git commit message) but explicitly dropped by the user before any implementation - it was speculative from the start (never a reported pain point, unlike every other feature built this session), and the design work itself showed it needed a real CRUD-style edit affordance (new API route, CLI command, UI input) to correctly cover a fully-manual file edit with no agent in the loop, not just a passive display field as first assumed. Don't re-propose this idea without a genuine new reason - the user's own reasoning for dropping it still applies unless something material has changed.

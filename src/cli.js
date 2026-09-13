@@ -59,6 +59,8 @@ Usage:
                                        version only, not semantic search)
   docmanager settings get             Show current settings
   docmanager settings set --snapshot-remote <url>   Set the snapshot git remote
+  docmanager settings set --version-debounce <seconds>   How long a burst of rapid saves must go quiet
+                                       before becoming its own version (5/10/15/20/30/45/60, default 20)
   docmanager snapshot push [--acknowledge-privacy]
                                        Push the local store to the snapshot remote. First-ever push refuses
                                        until --acknowledge-privacy confirms you understand the remote's own
@@ -801,12 +803,25 @@ async function settingsCommand(args) {
   }
 
   if (sub === "set") {
-    const { flags } = parseFlags(args.slice(1), ["snapshot-remote", "snapshot-remote-token"]);
-    if (flags["snapshot-remote"] === undefined && flags["snapshot-remote-token"] === undefined) {
-      throw new AxiError("--snapshot-remote or --snapshot-remote-token is required", "VALIDATION_ERROR", [
-        "docmanager settings set --snapshot-remote <url>",
-        "docmanager settings set --snapshot-remote-token <token>",
-      ]);
+    const { flags } = parseFlags(args.slice(1), [
+      "snapshot-remote",
+      "snapshot-remote-token",
+      "version-debounce",
+    ]);
+    if (
+      flags["snapshot-remote"] === undefined &&
+      flags["snapshot-remote-token"] === undefined &&
+      flags["version-debounce"] === undefined
+    ) {
+      throw new AxiError(
+        "--snapshot-remote, --snapshot-remote-token, or --version-debounce is required",
+        "VALIDATION_ERROR",
+        [
+          "docmanager settings set --snapshot-remote <url>",
+          "docmanager settings set --snapshot-remote-token <token>",
+          "docmanager settings set --version-debounce <seconds>",
+        ],
+      );
     }
     const patch = {};
     if (flags["snapshot-remote"] !== undefined) patch.snapshotRemote = flags["snapshot-remote"];
@@ -814,6 +829,12 @@ async function settingsCommand(args) {
     // authArgs(). An empty value clears a previously-set token.
     if (flags["snapshot-remote-token"] !== undefined) {
       patch.snapshotRemoteToken = flags["snapshot-remote-token"] || null;
+    }
+    // Left as a raw number here - settings.js itself is the validation
+    // boundary for the fixed 5/10/15/20/30/45/60 enum, the same split
+    // store.js's own storage-layer invariants already draw elsewhere.
+    if (flags["version-debounce"] !== undefined) {
+      patch.versionDebounceSeconds = Number(flags["version-debounce"]);
     }
     const settings = await coreClient.updateSettings(patch);
     return { settings, help: ["Run `docmanager snapshot push` to push the current store there"] };
@@ -823,6 +844,7 @@ async function settingsCommand(args) {
     "docmanager settings get",
     "docmanager settings set --snapshot-remote <url>",
     "docmanager settings set --snapshot-remote-token <token>",
+    "docmanager settings set --version-debounce <seconds>",
   ]);
 }
 

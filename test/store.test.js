@@ -19,10 +19,16 @@ import {
 } from "../src/core/store.js";
 import { runGit } from "../src/core/git.js";
 import { rebuildIndex, listFamiliesFromIndex, getFamilyFromIndex } from "../src/core/index.js";
+import { updateSettings } from "../src/core/settings.js";
 
 let homeDir;
 beforeEach(() => {
   homeDir = useIsolatedHome();
+  // This file exercises the real version-debounce window itself (via mock
+  // Date), unlike every other test file - undo useIsolatedHome()'s default
+  // zeroing override so recordVersionIfChanged falls back to the real
+  // settings-configured window.
+  delete process.env.DOCMANAGER_VERSION_DEBOUNCE_MS;
 });
 afterEach(() => {
   cleanupHome(homeDir);
@@ -64,14 +70,160 @@ test("recordVersionIfChanged is a real no-op for unchanged content", async () =>
   assert.equal(Object.keys(getFamily(family.id).versions).length, 1);
 });
 
-test("recordVersionIfChanged captures a new version and advances head, linked by supersedes", async () => {
+test("recordVersionIfChanged captures a new version and advances head, linked by supersedes", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
   const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
   const originalHead = family.headVersion;
+  t.mock.timers.tick(21_000); // past the default debounce window - a genuinely separate save
   const { changed, family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
   assert.equal(changed, true);
   assert.equal(Object.keys(updated.versions).length, 2);
   assert.notEqual(updated.headVersion, originalHead);
   assert.equal(updated.versions[updated.headVersion].supersedes, originalHead);
+});
+
+test("recordVersionIfChanged carries a highlight forward unchanged when its text doesn't move", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("Hello world and more"));
+
+  assert.deepEqual(updated.versions[updated.headVersion].highlights.map((h) => [h.startOffset, h.endOffset]), [
+    [6, 11],
+  ]);
+});
+
+test("recordVersionIfChanged remaps a highlight's offsets when text shifts ahead of it", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("Say hi. Hello world"));
+
+  const newHash = updated.headVersion;
+  assert.deepEqual(updated.versions[newHash].highlights.map((h) => [h.startOffset, h.endOffset]), [[14, 19]]);
+});
+
+test("recordVersionIfChanged drops a highlight whose exact text was edited away", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("Hello there"));
+
+  assert.equal(updated.versions[updated.headVersion].highlights, undefined);
+});
+
+test("recordVersionIfChanged adds no highlights key when the parent version had none", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
+  assert.equal(updated.versions[updated.headVersion].highlights, undefined);
+});
+
+test("recordVersionIfChanged picks the closest matching occurrence when the highlighted text appears more than once", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("9876543210cat") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 10, endOffset: 13 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("cat9876543210cat"));
+
+  assert.deepEqual(updated.versions[updated.headVersion].highlights.map((h) => [h.startOffset, h.endOffset]), [
+    [13, 16],
+  ]);
+});
+
+test("cascading highlights carry across a chain of three versions", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  await recordVersionIfChanged(family.id, Buffer.from("Say hi. Hello world"));
+  const { family: v3 } = await recordVersionIfChanged(family.id, Buffer.from("Say hi again. Hello world"));
+
+  assert.deepEqual(v3.versions[v3.headVersion].highlights.map((h) => [h.startOffset, h.endOffset]), [[20, 25]]);
+});
+
+test("recordVersionIfChanged amends the head in place for a save inside the debounce window, instead of stacking a new version", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  t.mock.timers.tick(21_000); // past the window: the root's own first edit is always real, never amended
+  const { family: withRealV2 } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
+  const v2Hash = withRealV2.headVersion;
+
+  t.mock.timers.tick(2_000); // well inside the default 20s window
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v3"));
+
+  assert.equal(Object.keys(updated.versions).length, 2);
+  assert.notEqual(updated.headVersion, v2Hash);
+  assert.equal(updated.versions[updated.headVersion].supersedes, family.headVersion);
+});
+
+test("recordVersionIfChanged records a real separate version once the debounce window has passed", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  t.mock.timers.tick(21_000);
+  const { family: withRealV2 } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
+  const v2Hash = withRealV2.headVersion;
+
+  t.mock.timers.tick(21_000); // past the default 20s window
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v3"));
+
+  assert.equal(Object.keys(updated.versions).length, 3);
+  assert.equal(updated.versions[updated.headVersion].supersedes, v2Hash);
+});
+
+test("the debounce window slides forward on each amended save, rather than being fixed from the first one", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  t.mock.timers.tick(21_000);
+  await recordVersionIfChanged(family.id, Buffer.from("v2")); // the root's own real, permanent second version
+
+  t.mock.timers.tick(15_000); // inside the window: amends
+  const beforeCount = Object.keys((await recordVersionIfChanged(family.id, Buffer.from("v3"))).family.versions).length;
+  t.mock.timers.tick(15_000); // 30s since v2, but only 15s since the v3 amend refreshed the clock: still amends
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v4"));
+
+  assert.equal(beforeCount, 2);
+  assert.equal(Object.keys(updated.versions).length, 2);
+});
+
+test("an amended slot keeps its own place in the supersedes chain once a later save falls outside the window", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  t.mock.timers.tick(21_000);
+  await recordVersionIfChanged(family.id, Buffer.from("v2"));
+
+  t.mock.timers.tick(5_000);
+  const { family: amended } = await recordVersionIfChanged(family.id, Buffer.from("v3")); // amends v2's slot
+  const amendedHash = amended.headVersion;
+
+  t.mock.timers.tick(25_000); // past the window
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v4"));
+
+  assert.equal(Object.keys(updated.versions).length, 3);
+  assert.equal(updated.versions[updated.headVersion].supersedes, amendedHash);
+  // v3 amended v2's own slot, taking over v2's position in the chain -
+  // including v2's own parent (root), not v2's now-gone hash itself.
+  assert.equal(updated.versions[amendedHash].supersedes, family.headVersion);
+});
+
+test("recordVersionIfChanged never amends the root version, even inside the debounce window - the first edit is always a real, permanent version", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  const rootHash = family.headVersion;
+
+  t.mock.timers.tick(2_000); // well inside the default 20s window
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
+
+  assert.equal(Object.keys(updated.versions).length, 2, "the root must stay a distinct, permanent version");
+  assert.equal(updated.versions[updated.headVersion].supersedes, rootHash);
+});
+
+test("recordVersionIfChanged reads the configured versionDebounceSeconds setting, not a hardcoded window", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  updateSettings({ versionDebounceSeconds: 5 });
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+
+  t.mock.timers.tick(6_000); // past the configured 5s window, though inside the default 20s
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
+
+  assert.equal(Object.keys(updated.versions).length, 2);
 });
 
 test("content is deduplicated by hash across different families", async () => {
@@ -82,8 +234,10 @@ test("content is deduplicated by hash across different families", async () => {
   assert.deepEqual(readContent(a.headVersion), content);
 });
 
-test("mergeFamilies splices the older family's history in as ancestry and removes the older record", async () => {
+test("mergeFamilies splices the older family's history in as ancestry and removes the older record", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
   const older = await createFamily({ syntheticPath: "/draft", content: Buffer.from("draft v1") });
+  t.mock.timers.tick(21_000); // past the default debounce window - a genuinely separate save
   const { family: olderV2 } = await recordVersionIfChanged(older.id, Buffer.from("draft v2"));
   const newer = await createFamily({ syntheticPath: "/report", content: Buffer.from("report v1") });
 
@@ -120,8 +274,10 @@ test("concurrent createFamily calls serialize correctly with no corruption", asy
   assert.equal(log.trim().split("\n").length, 6); // 5 tracks + the init commit
 });
 
-test("index rebuild matches on-disk family/version data, current flag correct", async () => {
+test("index rebuild matches on-disk family/version data, current flag correct", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
   const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  t.mock.timers.tick(21_000); // past the default debounce window - a genuinely separate save
   await recordVersionIfChanged(family.id, Buffer.from("v2"));
 
   rebuildIndex();
@@ -137,9 +293,11 @@ test("index rebuild matches on-disk family/version data, current flag correct", 
   assert.equal(full.versions.filter((v) => v.current).length, 1);
 });
 
-test("findFamilyByVersionHash finds the family owning a given version hash", async () => {
+test("findFamilyByVersionHash finds the family owning a given version hash", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
   const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
   const v1 = family.headVersion;
+  t.mock.timers.tick(21_000); // past the default debounce window - a genuinely separate save
   const { family: f2 } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
   const v2 = f2.headVersion;
 

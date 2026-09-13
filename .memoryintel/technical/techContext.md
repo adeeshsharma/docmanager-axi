@@ -1,4 +1,9 @@
 ## Stack
+
+<!-- memoryintel:detected:start -->
+_No stack manifest found._
+<!-- memoryintel:detected:end -->
+
 _Imported verbatim from `memory-bank/techContext.md` on 2026-08-29 — not yet re-filed into per-section structure; treat as raw source material for the next real update._
 
 # Tech context

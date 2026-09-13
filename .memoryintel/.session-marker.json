@@ -1,1 +1,1 @@
-{"lastFlaggedDiffSignature":"89acb378174a931ab6c82fd8e85790db836888f3\n"}
+{"lastFlaggedDiffSignature":"55058823174da8cc18aa64ed6fe9ff870e1743da\n M ARCHITECTURE.md\n M README.md\n M skills/docmanager/SKILL.md\n M src/cli.js\n M src/core/settings.js\n M src/core/store.js\n M src/skill.js\n M src/ui/app.js\n M src/ui/index.html\n M test/cli.test.js\n M test/helpers.js\n M test/settings.test.js\n M test/store.test.js","consecutiveTrivialSkips":0}

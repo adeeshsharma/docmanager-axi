@@ -8,8 +8,8 @@
     "summary": "Brownfield import from docs/superpowers/specs/2026-08-29-folders-design.md"
   },
   "context/activeContext.md": {
-    "lastUpdated": "2026-09-04T20:41:21.548Z",
-    "summary": "user-reported friction between revert and delete-version, resolved without weakening either feature's existing safety guarantees"
+    "lastUpdated": "2026-09-13T15:39:26.707Z",
+    "summary": "prevents a future session from being confused by version counts not matching edit counts, or from reintroducing the root-amend bug, or from not knowing why useIsolatedHome() sets this env var"
   },
   "business/productContext.md": {
     "lastUpdated": "2026-08-29T16:35:50.600Z",
@@ -24,15 +24,27 @@
     "summary": "document the general resolution pattern (explicit opt-in bridge, not weakening a safety guard) for future cases where two independently-correct invariants in this codebase turn out to collide"
   },
   "technical/techContext.md": {
-    "lastUpdated": "2026-08-29T16:35:50.602Z",
-    "summary": "Brownfield import from memory-bank/techContext.md"
+    "lastUpdated": "2026-09-13T15:06:18.757Z",
+    "summary": "Auto-detected stack/integration facts (memoryintel sync)"
   },
   "context/currentMentalModel.md": {
-    "lastUpdated": "2026-09-04T15:05:35.609Z",
-    "summary": "Whole-file replace per this project's own memory instructions - the current understanding shifted meaningfully (two new architectural capabilities), and this is the file the dashboard's Current Understanding section renders directly."
+    "lastUpdated": "2026-09-13T15:39:26.705Z",
+    "summary": "two features shipped same session: cascading highlights and debounced version capture, the latter uncovering a real cross-machine sync bug and requiring a project-wide test fixture pattern"
   },
   "business/roadmap.md": {
-    "lastUpdated": "2026-08-30T16:21:45.696Z",
-    "summary": "User explicitly asked to capture this idea for later consideration during this session, after discussing what else would be good to add to docmanager-axi."
+    "lastUpdated": "2026-09-05T10:35:32.048Z",
+    "summary": "user explicitly said to drop the version-notes idea completely, but a future session should know it was already explored and why, rather than re-proposing the identical idea from scratch"
+  },
+  "technical/integrations.md": {
+    "lastUpdated": "2026-09-13T15:06:18.759Z",
+    "summary": "Auto-detected stack/integration facts (memoryintel sync)"
+  },
+  "technical/infrastructure.md": {
+    "lastUpdated": "2026-09-13T15:06:18.760Z",
+    "summary": "Auto-detected stack/integration facts (memoryintel sync)"
+  },
+  "context/decisions.md": {
+    "lastUpdated": "2026-09-13T15:39:26.706Z",
+    "summary": "a future session touching recordVersionIfChanged, sync.js, or test/helpers.js's useIsolatedHome() must not weaken/remove the root-amend guard or the env-var test override without re-deriving why both exist"
   }
 }

@@ -38,3 +38,22 @@ test("the remote and the token can be updated independently of each other", () =
 test("an unknown setting key is still rejected", () => {
   assert.throws(() => updateSettings({ notARealSetting: "x" }), (err) => err.code === "UNKNOWN_SETTING");
 });
+
+test("versionDebounceSeconds defaults to 20", () => {
+  assert.equal(getSettings().versionDebounceSeconds, 20);
+});
+
+test("versionDebounceSeconds accepts any of its allowed values", () => {
+  for (const seconds of [5, 10, 15, 20, 30, 45, 60]) {
+    updateSettings({ versionDebounceSeconds: seconds });
+    assert.equal(getSettings().versionDebounceSeconds, seconds);
+  }
+});
+
+test("versionDebounceSeconds rejects a value outside its fixed enum", () => {
+  assert.throws(
+    () => updateSettings({ versionDebounceSeconds: 7 }),
+    (err) => err.code === "INVALID_SETTING",
+  );
+  assert.equal(getSettings().versionDebounceSeconds, 20, "a rejected update must not partially apply");
+});

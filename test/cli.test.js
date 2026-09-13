@@ -30,7 +30,14 @@ before(() => {
   // own pid, so a real dev-machine core running concurrently is never
   // touched and parallel CI runs are unlikely to collide either.
   port = 40000 + (process.pid % 10000);
-  env = { ...process.env, DOCMANAGER_HOME: homeDir, DOCMANAGER_PORT: String(port) };
+  // None of this file's tests are about the version-debounce feature itself
+  // (store.test.js covers that directly, with mock timers) - they're
+  // end-to-end scenarios that happen to record two versions of the same
+  // family within the same real-time test run, which the default 20s
+  // debounce window would otherwise silently amend into one. Zeroing it out
+  // here keeps every save a genuinely distinct version, matching what these
+  // tests actually assert, without a real 20+ second sleep per test.
+  env = { ...process.env, DOCMANAGER_HOME: homeDir, DOCMANAGER_PORT: String(port), DOCMANAGER_VERSION_DEBOUNCE_MS: "0" };
 });
 
 after(async () => {
@@ -74,6 +81,15 @@ test("track / families / settings / untrack all work end to end through the real
   const settingsGet = await runCli(["settings", "get"]);
   assert.equal(settingsGet.code, 0);
   assert.match(settingsGet.stdout, /example\.invalid/);
+
+  const debounceSet = await runCli(["settings", "set", "--version-debounce", "30"]);
+  assert.equal(debounceSet.code, 0, debounceSet.stderr);
+  const debounceGet = await runCli(["settings", "get"]);
+  assert.match(debounceGet.stdout, /versionDebounceSeconds: 30/);
+
+  const invalidDebounce = await runCli(["settings", "set", "--version-debounce", "7"]);
+  assert.notEqual(invalidDebounce.code, 0);
+  assert.match(invalidDebounce.stdout, /versionDebounceSeconds must be one of/);
 
   const untracked = await runCli(["untrack", familyId]);
   assert.equal(untracked.code, 0, untracked.stderr);
