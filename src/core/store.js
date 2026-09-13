@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { docmanagerHome } from "./paths.js";
 import { runGit } from "./git.js";
 import { listMappings } from "./local-state.js";
-import { isSameNormalizedHtml } from "./html-normalize.js";
+import { isSameNormalizedHtml, extractFlattenedVisibleText } from "./html-normalize.js";
 
 export function storePath() {
   return join(docmanagerHome(), "store");
@@ -168,12 +168,68 @@ export async function createFamily({ syntheticPath, title, content, sourceFileNa
 }
 
 /**
+ * Re-anchors highlights from an old version's content onto a new version's
+ * content by exact substring, rather than trusting the old character
+ * offsets directly - the new content is a real edit, not just a re-save, so
+ * text before a highlight may have shifted it. A highlight whose exact
+ * quoted text can no longer be found (the highlighted text itself was
+ * edited or removed) is dropped rather than guessed at - carrying forward a
+ * highlight is only ever safe if we can prove the text it marks still
+ * exists. Ambiguous matches (the same text appears more than once) resolve
+ * to whichever occurrence sits closest to the original offset - a
+ * reasonable default when an edit elsewhere in the document didn't move the
+ * highlighted text itself.
+ *
+ * ponytail: an O(occurrences x snippet length) scan per highlight - fine
+ * for the HTML documents this project handles today, revisit if a
+ * pathological huge document with a huge highlight count shows up in
+ * practice.
+ */
+function remapHighlights(oldContent, newContent, highlights) {
+  if (highlights.length === 0) return [];
+
+  const oldText = extractFlattenedVisibleText(oldContent);
+  const newText = extractFlattenedVisibleText(newContent);
+  const remapped = [];
+
+  for (const highlight of highlights) {
+    const snippet = oldText.slice(highlight.startOffset, highlight.endOffset);
+    if (!snippet) continue;
+
+    let bestIndex = -1;
+    let bestDistance = Infinity;
+    let searchFrom = 0;
+    for (;;) {
+      const index = newText.indexOf(snippet, searchFrom);
+      if (index === -1) break;
+      const distance = Math.abs(index - highlight.startOffset);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+      searchFrom = index + 1;
+    }
+
+    if (bestIndex === -1) continue;
+    remapped.push({ ...highlight, startOffset: bestIndex, endOffset: bestIndex + snippet.length });
+  }
+
+  return remapped;
+}
+
+/**
  * Records a new version of an existing family if the content actually
  * changed since the head version. No-ops (does not error, does not commit)
  * if the content hash is unchanged - this is the automatic, no-confirmation
  * capture path for an already-tracked synthetic path (see systemPatterns.md
  * - this is a different mechanism from suggesting a link between two
  * previously unrelated files, which never happens in this function).
+ *
+ * Highlights cascade forward from the outgoing head version, re-anchored by
+ * remapHighlights() rather than copied verbatim - see that function's own
+ * reasoning. A version only gets a `highlights` key at all if something
+ * actually carried over, matching addHighlight()'s own lazy-creation
+ * convention for the field.
  */
 export async function recordVersionIfChanged(familyId, content, sourceFileName) {
   return serialize(async () => {
@@ -189,12 +245,21 @@ export async function recordVersionIfChanged(familyId, content, sourceFileName) 
       return { changed: false, family };
     }
 
+    const parentHash = family.headVersion;
+    const parentHighlights = family.versions[parentHash].highlights ?? [];
+
     const now = new Date().toISOString();
-    family.versions[hash] = {
+    const newVersion = {
       createdAt: now,
       sourceFileName: sourceFileName ?? null,
-      supersedes: family.headVersion,
+      supersedes: parentHash,
     };
+    if (parentHighlights.length > 0) {
+      const carried = remapHighlights(readContent(parentHash), content, parentHighlights);
+      if (carried.length > 0) newVersion.highlights = carried;
+    }
+
+    family.versions[hash] = newVersion;
     family.headVersion = hash;
     writeFamilyUnlocked(family);
     await commitAll(`New version of ${family.syntheticPath}`);

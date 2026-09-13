@@ -101,6 +101,18 @@ export function extractPlainText(buffer) {
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
+// Same traversal as extractPlainText(), but joined without a separator and
+// without whitespace collapsing - this has to reproduce the exact character
+// offsets highlight-render.js's client-side script computes by walking
+// document.body's own text nodes, which is what lets a highlight recorded
+// against one version be re-located by substring search in another.
+export function extractFlattenedVisibleText(buffer) {
+  const document = parse(buffer.toString("utf8"));
+  const parts = [];
+  collectText(document, parts);
+  return parts.join("");
+}
+
 // Display-only, for diffing - kept entirely separate from normalizeHtml()
 // itself so nothing about the existing equality-comparison behavior changes.
 // normalizeHtml()'s own output isn't line-shaped (whitespace-only text nodes

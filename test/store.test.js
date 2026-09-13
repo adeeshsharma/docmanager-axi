@@ -74,6 +74,63 @@ test("recordVersionIfChanged captures a new version and advances head, linked by
   assert.equal(updated.versions[updated.headVersion].supersedes, originalHead);
 });
 
+test("recordVersionIfChanged carries a highlight forward unchanged when its text doesn't move", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("Hello world and more"));
+
+  assert.deepEqual(updated.versions[updated.headVersion].highlights.map((h) => [h.startOffset, h.endOffset]), [
+    [6, 11],
+  ]);
+});
+
+test("recordVersionIfChanged remaps a highlight's offsets when text shifts ahead of it", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("Say hi. Hello world"));
+
+  const newHash = updated.headVersion;
+  assert.deepEqual(updated.versions[newHash].highlights.map((h) => [h.startOffset, h.endOffset]), [[14, 19]]);
+});
+
+test("recordVersionIfChanged drops a highlight whose exact text was edited away", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("Hello there"));
+
+  assert.equal(updated.versions[updated.headVersion].highlights, undefined);
+});
+
+test("recordVersionIfChanged adds no highlights key when the parent version had none", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("v1") });
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("v2"));
+  assert.equal(updated.versions[updated.headVersion].highlights, undefined);
+});
+
+test("recordVersionIfChanged picks the closest matching occurrence when the highlighted text appears more than once", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("9876543210cat") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 10, endOffset: 13 });
+
+  const { family: updated } = await recordVersionIfChanged(family.id, Buffer.from("cat9876543210cat"));
+
+  assert.deepEqual(updated.versions[updated.headVersion].highlights.map((h) => [h.startOffset, h.endOffset]), [
+    [13, 16],
+  ]);
+});
+
+test("cascading highlights carry across a chain of three versions", async () => {
+  const family = await createFamily({ syntheticPath: "/report", content: Buffer.from("Hello world") });
+  await addHighlight(family.id, family.headVersion, { color: "yellow", startOffset: 6, endOffset: 11 });
+
+  await recordVersionIfChanged(family.id, Buffer.from("Say hi. Hello world"));
+  const { family: v3 } = await recordVersionIfChanged(family.id, Buffer.from("Say hi again. Hello world"));
+
+  assert.deepEqual(v3.versions[v3.headVersion].highlights.map((h) => [h.startOffset, h.endOffset]), [[20, 25]]);
+});
+
 test("content is deduplicated by hash across different families", async () => {
   const content = Buffer.from("<html>identical</html>");
   const a = await createFamily({ syntheticPath: "/a", content });
